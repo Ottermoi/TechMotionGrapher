@@ -1,0 +1,3771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SIGNAL//PROCESSOR — Acid Graphic Media FX</title>
+
+<!-- ============================================================
+     SIGNAL//PROCESSOR
+     A single-file, vanilla-JS media effects console inspired by
+     the "acid graphic / tech-minimalist" aesthetic of Bungie's
+     Marathon: pure black, stark white, electric chartreuse and
+     neon magenta. High-contrast neo-brutalism + sterile UI.
+     ============================================================ -->
+
+<!-- Tailwind via CDN for utility styling -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Condensed display face (Anton) + technical mono (IBM Plex Mono) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+<script>
+  /* Extend Tailwind with the acid palette + type stacks */
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink:   '#000000',   // pure black
+          paper: '#FFFFFF',   // stark white
+          acid:  '#CCFF00',   // electric chartreuse
+          mag:   '#FF00A8',   // piercing neon magenta
+        },
+        fontFamily: {
+          display: ['Anton', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  /* ------------------------------------------------------------
+     Base custom CSS — things Tailwind utilities don't cover well:
+     the technical background grid, industrial sliders, square
+     toggles, warning stripes, scanline REC blink, etc.
+     ------------------------------------------------------------ */
+  html, body { height: 100%; }
+
+  body {
+    background-color: #000000;
+    color: #FFFFFF;
+    font-family: "IBM Plex Mono", monospace;
+    /* Fine vector grid across the whole app */
+    background-image:
+      linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Tighter, denser grid inside the workspace */
+  .workspace-grid {
+    background-image:
+      linear-gradient(rgba(204,255,0,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(204,255,0,0.05) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 128px 128px, 128px 128px, 16px 16px, 16px 16px;
+  }
+
+  /* Glass panels with hard borders: frosted black + razor edge */
+  .panel {
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 2px solid #FFFFFF;
+  }
+
+  /* Display headings: tall, condensed, tight tracking */
+  .h-display {
+    font-family: "Anton", sans-serif;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    line-height: 0.92;
+  }
+
+  /* ---------- Industrial range sliders ---------- */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 22px;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: repeating-linear-gradient(90deg, #fff 0 2px, transparent 2px 8px); /* tick track */
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 22px;
+    margin-top: -9px;
+    background: #CCFF00;             /* chartreuse thumb */
+    border: 2px solid #000;
+    box-shadow: 0 0 0 2px #CCFF00;   /* hard double edge */
+    border-radius: 0;                /* no soft corners, ever */
+  }
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: repeating-linear-gradient(90deg, #fff 0 2px, transparent 2px 8px);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 22px;
+    background: #CCFF00;
+    border: 2px solid #000;
+    box-shadow: 0 0 0 2px #CCFF00;
+    border-radius: 0;
+  }
+  input[type="range"]:focus-visible { outline: 2px solid #FF00A8; outline-offset: 2px; }
+  input[type="range"]:disabled::-webkit-slider-thumb { background: #444; box-shadow: 0 0 0 2px #444; }
+  input[type="range"]:disabled::-moz-range-thumb { background: #444; box-shadow: 0 0 0 2px #444; }
+
+  /* ---------- Square hardware toggles (checkboxes) ---------- */
+  input[type="checkbox"].fx-toggle {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px; height: 20px;
+    border: 2px solid #fff;
+    background: #000;
+    cursor: pointer;
+    flex: none;
+    display: grid;
+    place-items: center;
+  }
+  input[type="checkbox"].fx-toggle:checked {
+    background: #CCFF00;
+    border-color: #CCFF00;
+  }
+  input[type="checkbox"].fx-toggle:checked::after {
+    content: "";
+    width: 8px; height: 8px;
+    background: #000;               /* solid black core = "engaged" */
+  }
+  input[type="checkbox"].fx-toggle:focus-visible { outline: 2px solid #FF00A8; outline-offset: 2px; }
+
+  /* ---------- Emergency reset: industrial warning stripes ---------- */
+  .warning-stripes {
+    background: repeating-linear-gradient(
+      -45deg,
+      #FF00A8 0 12px,
+      #000000 12px 24px
+    );
+  }
+  .warning-stripes:hover .warning-core { background: #FF00A8; color: #000; }
+
+  /* REC indicator blink */
+  @keyframes rec-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.15; } }
+  .rec-live { animation: rec-blink 1s steps(1) infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .rec-live { animation: none; }
+  }
+
+  /* Sidebar scrollbar, kept technical */
+  #sidebar::-webkit-scrollbar { width: 8px; }
+  #sidebar::-webkit-scrollbar-track { background: #000; border-left: 1px solid #333; }
+  #sidebar::-webkit-scrollbar-thumb { background: #CCFF00; }
+
+  /* Buttons get hard, instant press feedback */
+  .btn-hard { transition: none; }
+  .btn-hard:active { transform: translate(2px, 2px); }
+  .btn-hard:focus-visible { outline: 2px solid #FF00A8; outline-offset: 2px; }
+
+  /* Drag-over highlight for the drop zone */
+  .drag-over { border-color: #CCFF00 !important; background: rgba(204,255,0,0.08) !important; }
+
+  /* ---------- Transparency checkerboard (behind transparent canvas) ----------
+     A canvas' transparent pixels reveal its own CSS background, so we
+     paint a checkerboard there when background-removal is active. */
+  .alpha-bg {
+    background-color: #111;
+    background-image:
+      linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+      linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+      linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  }
+
+  /* ---------- Keyframe ◆ button ---------- */
+  .kf-add {
+    color: #666; font-size: 11px; line-height: 1;
+    padding: 0 2px; cursor: pointer; background: none; border: none;
+  }
+  .kf-add:hover { color: #CCFF00; }
+  .kf-add.active { color: #CCFF00; text-shadow: 0 0 4px #CCFF00; }
+  .kf-add:focus-visible { outline: 2px solid #FF00A8; outline-offset: 1px; }
+
+  /* ---------- Eye / collapse button ---------- */
+  .fx-eye { color: rgba(255,255,255,0.4); cursor: pointer; background: none; border: none; padding: 0 2px; }
+  .fx-eye:hover { color: #CCFF00; }
+  .fx-eye:focus-visible { outline: 2px solid #FF00A8; outline-offset: 1px; }
+  .fx-stage.collapsed .fx-collapsible { display: none; }
+
+  /* ---------- Keyframe timeline ---------- */
+  .kf-track {
+    position: relative; height: 20px; background: #0c0c0c;
+    border: 1px solid #333; cursor: crosshair;
+  }
+  .kf-track-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #333; }
+  .kf-diamond {
+    position: absolute; top: 50%; width: 10px; height: 10px;
+    background: #CCFF00; border: 1px solid #000;
+    transform: translate(-50%, -50%) rotate(45deg);
+    cursor: pointer; padding: 0;
+  }
+  .kf-diamond.sel { background: #FF00A8; box-shadow: 0 0 0 2px #FF00A8; z-index: 2; }
+  .kf-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #FF00A8; pointer-events: none; }
+</style>
+</head>
+
+<body class="overflow-hidden">
+
+<!-- ============================================================
+     SHELL: header / workspace / sidebar / status footer
+     ============================================================ -->
+<div class="h-screen flex flex-col">
+
+  <!-- ================= HEADER ================= -->
+  <header class="flex items-stretch border-b-2 border-paper flex-none bg-ink">
+    <div class="px-4 py-2 border-r-2 border-paper flex items-center gap-3">
+      <!-- Logomark: hard square + notch -->
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" fill="none" stroke="#CCFF00" stroke-width="2"/>
+        <rect x="7" y="7" width="12" height="12" fill="#CCFF00"/>
+        <rect x="13" y="0" width="4" height="10" fill="#000"/>
+        <rect x="13" y="2" width="4" height="8" fill="#FF00A8"/>
+      </svg>
+      <h1 class="h-display text-2xl text-paper">SIGNAL<span class="text-acid">//</span>PROCESSOR</h1>
+    </div>
+    <div class="flex-1 flex items-center px-4 gap-4 text-[10px] text-white/60 uppercase overflow-hidden whitespace-nowrap">
+      <span>UESC.IMG-PIPELINE</span>
+      <span class="text-acid">VER 2.71</span>
+      <span id="hdr-media" class="text-paper">NO SIGNAL</span>
+    </div>
+    <div id="rec-indicator" class="hidden items-center gap-2 px-4 border-l-2 border-mag text-mag text-xs font-bold">
+      <span class="w-3 h-3 bg-mag rec-live inline-block"></span> REC
+    </div>
+  </header>
+
+  <!-- ================= MAIN SPLIT ================= -->
+  <div class="flex-1 flex min-h-0">
+
+    <!-- ---------- WORKSPACE (canvas + transport) ---------- -->
+    <main id="workspace" class="flex-1 flex flex-col min-w-0 workspace-grid relative">
+
+      <!-- Canvas stage -->
+      <div class="flex-1 flex items-center justify-center p-6 min-h-0 relative">
+
+        <!-- Empty-state drop target -->
+        <div id="dropzone"
+             class="absolute inset-6 border-2 border-dashed border-white/40 flex flex-col items-center justify-center gap-4 cursor-pointer select-none"
+             role="button" tabindex="0" aria-label="Upload media: drop a file or press Enter to browse">
+          <div class="h-display text-5xl md:text-7xl text-paper text-center leading-none">
+            FEED<br/><span class="text-acid">MEDIA</span>
+          </div>
+          <p class="text-xs text-white/60 uppercase tracking-widest text-center px-4">
+            Drop file on target // or click to browse<br/>
+            <span class="text-acid">MP4 · MOV · PNG · JPG · GIF · WEBP · GLB · GLTF · OBJ</span>
+          </p>
+          <div class="text-[10px] text-mag border border-mag px-2 py-1">INPUT BUS 01 — STANDBY</div>
+        </div>
+
+        <!-- The one visible canvas. Internal resolution = processing
+             resolution; CSS scales it to fit while keeping aspect. -->
+        <canvas id="display" class="hidden max-w-full max-h-full border-2 border-paper bg-ink"
+                style="image-rendering: pixelated;"></canvas>
+
+        <input type="file" id="file-input" class="hidden"
+               accept=".mp4,.mov,.png,.jpg,.jpeg,.gif,.webp,.glb,.gltf,.obj,video/mp4,video/quicktime,image/png,image/jpeg,image/gif,image/webp,model/gltf-binary,model/gltf+json" />
+      </div>
+
+      <!-- Transport bar: industrial technical readout -->
+      <div id="transport" class="hidden flex-none border-t-2 border-paper panel !border-x-0 !border-b-0">
+        <div class="flex items-center gap-0">
+          <button id="btn-play" class="btn-hard w-14 h-12 border-r-2 border-paper text-acid font-bold text-lg"
+                  aria-label="Play or pause">►</button>
+          <button id="btn-mute" class="btn-hard w-14 h-12 border-r-2 border-paper text-paper text-[10px] font-bold uppercase"
+                  aria-label="Mute or unmute">SND</button>
+          <div class="flex-1 px-4 flex items-center gap-4">
+            <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek" class="flex-1" />
+          </div>
+          <div id="timecode" class="px-4 text-xs text-acid border-l-2 border-paper h-12 flex items-center whitespace-nowrap">
+            00:00.0 / 00:00.0
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ---------- SIDEBAR: EFFECTS PIPELINE ---------- -->
+    <aside id="sidebar" class="w-80 flex-none border-l-2 border-paper overflow-y-auto panel !border-y-0 !border-r-0">
+
+      <div class="p-4 border-b-2 border-paper">
+        <h2 class="h-display text-xl text-paper">FX <span class="text-acid">PIPELINE</span></h2>
+        <p class="text-[10px] text-white/50 uppercase mt-1">Stackable · order 01→04 · realtime</p>
+      </div>
+
+      <!-- Global output palette (drives Dither / Halftone / ASCII) -->
+      <section class="p-4 border-b-2 border-paper">
+        <div class="text-[10px] text-white/50 uppercase mb-2">Output palette · dark → light</div>
+
+        <!-- Preset swatches -->
+        <div id="pal-presets" class="grid grid-cols-3 gap-1"></div>
+
+        <!-- Live swatch editor -->
+        <div class="mt-3">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[10px] text-white/50 uppercase">Custom swatches</span>
+            <div class="flex gap-1">
+              <button id="pal-add" class="btn-hard text-[11px] text-acid border border-acid px-1.5 leading-none" title="Add colour" aria-label="Add colour">+</button>
+              <button id="pal-remove" class="btn-hard text-[11px] text-mag border border-mag px-1.5 leading-none" title="Remove last colour" aria-label="Remove last colour">−</button>
+            </div>
+          </div>
+          <div id="pal-swatches" class="flex gap-1 flex-wrap"></div>
+          <p class="text-[9px] text-white/40 mt-2 uppercase leading-relaxed">
+            Order runs darkest → lightest. Editing a colour switches to your custom palette.
+          </p>
+        </div>
+      </section>
+
+      <!-- Pipeline order hint -->
+      <div class="px-4 pt-3 pb-2 border-b-2 border-paper">
+        <div class="text-[10px] text-white/50 uppercase">Stack order · top → bottom</div>
+        <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+          Grip <span class="text-acid">⣿</span> to drag · or use <span class="text-acid">▲▼</span> · each stage feeds the next
+        </p>
+      </div>
+
+      <!-- ================= REORDERABLE FX STAGES =================
+           DOM order == processing order == numbering. Reordering
+           moves these <section> nodes and re-syncs state.order. -->
+      <div id="fx-list">
+
+        <!-- DITHER -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="dither">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Dither to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-dither" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">01</span>
+              <span class="h-display text-lg text-paper truncate">DITHER</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Dither up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Dither down">▼</button>
+            </div>
+          </div>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="dither-scale">Pattern scale</label><span id="dither-scale-val" class="text-acid">1 px</span>
+              </div>
+              <input type="range" id="dither-scale" min="1" max="6" step="1" value="1" />
+            </div>
+          </div>
+        </section>
+
+        <!-- HALFTONE -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="halftone">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Halftone to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-halftone" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">02</span>
+              <span class="h-display text-lg text-paper truncate">HALFTONE</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Halftone up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Halftone down">▼</button>
+            </div>
+          </div>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="halftone-scale">Dot size</label><span id="halftone-scale-val" class="text-acid">8 px</span>
+              </div>
+              <input type="range" id="halftone-scale" min="4" max="24" step="1" value="8" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="halftone-contrast">Contrast</label><span id="halftone-contrast-val" class="text-acid">1.4×</span>
+              </div>
+              <input type="range" id="halftone-contrast" min="0.5" max="3" step="0.1" value="1.4" />
+            </div>
+          </div>
+        </section>
+
+        <!-- ASCII -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="ascii">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Ascii to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-ascii" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">03</span>
+              <span class="h-display text-lg text-paper truncate">ASCII</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Ascii up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Ascii down">▼</button>
+            </div>
+          </div>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="ascii-size">Font size</label><span id="ascii-size-val" class="text-acid">10 px</span>
+              </div>
+              <input type="range" id="ascii-size" min="6" max="24" step="1" value="10" />
+            </div>
+          </div>
+        </section>
+
+        <!-- RGB SPLIT / GLITCH -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="aberr">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag RGB Split to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-aberr" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">04</span>
+              <span class="h-display text-lg text-paper truncate">RGB SPLIT</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move RGB Split up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move RGB Split down">▼</button>
+            </div>
+          </div>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="aberr-offset">Channel offset</label><span id="aberr-offset-val" class="text-acid">4 px</span>
+              </div>
+              <input type="range" id="aberr-offset" min="0" max="30" step="1" value="4" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="glitch-int">Glitch intensity</label><span id="glitch-int-val" class="text-mag">0.0</span>
+              </div>
+              <input type="range" id="glitch-int" min="0" max="1" step="0.05" value="0" />
+            </div>
+          </div>
+        </section>
+
+        <!-- NOISE MASK (animated outline overlay) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="noise">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Noise Mask to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-noise" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">05</span>
+              <span class="h-display text-lg text-paper truncate">NOISE MASK</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Noise Mask up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Noise Mask down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Locks onto the selected shape · dither blocks trail up from its base
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Shape target</div>
+              <div class="grid grid-cols-2 gap-0 border-2 border-paper">
+                <button id="noise-dark"  class="btn-hard py-1.5 text-xs font-bold uppercase bg-paper text-ink" aria-pressed="true">Dark</button>
+                <button id="noise-light" class="btn-hard py-1.5 text-xs font-bold uppercase bg-ink text-paper" aria-pressed="false">Light</button>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="noise-thresh">Mask threshold</label><span id="noise-thresh-val" class="text-acid">90</span>
+              </div>
+              <input type="range" id="noise-thresh" min="10" max="245" step="5" value="90" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="noise-block">Block size</label><span id="noise-block-val" class="text-acid">10 px</span>
+              </div>
+              <input type="range" id="noise-block" min="4" max="24" step="1" value="10" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="noise-speed">Sweep speed</label><span id="noise-speed-val" class="text-acid">0.35</span>
+              </div>
+              <input type="range" id="noise-speed" min="0.05" max="1" step="0.05" value="0.35" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="noise-density">Noise density</label><span id="noise-density-val" class="text-acid">0.70</span>
+              </div>
+              <input type="range" id="noise-density" min="0" max="1" step="0.05" value="0.7" />
+            </div>
+          </div>
+        </section>
+
+        <!-- BLOCKS (chunky corrupted pixelation) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="blocks">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Blocks to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-blocks" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">06</span>
+              <span class="h-display text-lg text-paper truncate">BLOCKS</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Blocks up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Blocks down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Crushes the frame into hard palette blocks · chaos merges + shifts them
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="blocks-size">Block size</label><span id="blocks-size-val" class="text-acid">12 px</span>
+              </div>
+              <input type="range" id="blocks-size" min="4" max="32" step="1" value="12" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="blocks-chaos">Chunk chaos</label><span id="blocks-chaos-val" class="text-mag">0.40</span>
+              </div>
+              <input type="range" id="blocks-chaos" min="0" max="1" step="0.05" value="0.4" />
+            </div>
+          </div>
+        </section>
+
+        <!-- SHAPES (contour wireframes) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="shapes">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Shapes to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-shapes" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">07</span>
+              <span class="h-display text-lg text-paper truncate">SHAPES</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Shapes up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Shapes down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Scatters wireframe boxes + circles along detected outlines
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="shapes-density">Density</label><span id="shapes-density-val" class="text-acid">0.35</span>
+              </div>
+              <input type="range" id="shapes-density" min="0.05" max="1" step="0.05" value="0.35" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="shapes-size">Max size</label><span id="shapes-size-val" class="text-acid">28 px</span>
+              </div>
+              <input type="range" id="shapes-size" min="6" max="80" step="1" value="28" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="shapes-thresh">Edge threshold</label><span id="shapes-thresh-val" class="text-acid">30</span>
+              </div>
+              <input type="range" id="shapes-thresh" min="5" max="120" step="1" value="30" />
+            </div>
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Shape set</div>
+              <div class="grid grid-cols-2 gap-1 text-[10px] uppercase text-white/70">
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" class="fx-toggle shape-kind" data-kind="rect" checked /> Boxes</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" class="fx-toggle shape-kind" data-kind="circle" checked /> Circles</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" class="fx-toggle shape-kind" data-kind="cross" checked /> Crosses</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" class="fx-toggle shape-kind" data-kind="tri" /> Triangles</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" class="fx-toggle shape-kind" data-kind="line" /> Lines</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" class="fx-toggle shape-kind" data-kind="hex" /> Hexes</label>
+              </div>
+              <label class="flex items-center gap-2 cursor-pointer mt-2 text-[10px] uppercase text-white/70">
+                <input type="checkbox" id="shapes-random" class="fx-toggle" checked />
+                Randomize per shape
+                <span class="ml-auto text-[9px] text-white/40">off = cycle evenly</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- DEPTH MAP (heuristic depth estimation) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="depth">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Depth Map to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-depth" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">08</span>
+              <span class="h-display text-lg text-paper truncate">DEPTH MAP</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Depth Map up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Depth Map down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Heuristic depth estimate (brightness + scene position) mapped through the palette
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Near is</div>
+              <div class="grid grid-cols-2 gap-0 border-2 border-paper">
+                <button id="depth-light" class="btn-hard py-1.5 text-xs font-bold uppercase bg-paper text-ink" aria-pressed="true">Light</button>
+                <button id="depth-dark"  class="btn-hard py-1.5 text-xs font-bold uppercase bg-ink text-paper" aria-pressed="false">Dark</button>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="depth-bias">Ground bias</label><span id="depth-bias-val" class="text-acid">0.35</span>
+              </div>
+              <input type="range" id="depth-bias" min="0" max="1" step="0.05" value="0.35" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">0 = brightness only · 1 = bottom-of-frame = near</p>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="depth-smooth">Smoothing</label><span id="depth-smooth-val" class="text-acid">2</span>
+              </div>
+              <input type="range" id="depth-smooth" min="0" max="6" step="1" value="2" />
+            </div>
+          </div>
+        </section>
+
+        <!-- CONTOUR (pulsing concentric outlines) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="contour">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Contour to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-contour" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">09</span>
+              <span class="h-display text-lg text-paper truncate">CONTOUR</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Contour up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Contour down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            3D models: true geometric slice planes cut the mesh at even heights · 2D media: brightness elevation bands
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="contour-hide" class="fx-toggle" />
+              <span class="text-[10px] uppercase text-white/60">Lines only — hide the 3D object</span>
+            </label>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="contour-rings">Levels</label><span id="contour-rings-val" class="text-acid">16</span>
+              </div>
+              <input type="range" id="contour-rings" min="2" max="48" step="1" value="16" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">How many brightness bands the surface is sliced into</p>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="contour-thresh">Line weight</label><span id="contour-thresh-val" class="text-acid">1.4</span>
+              </div>
+              <input type="range" id="contour-thresh" min="0.4" max="4" step="0.1" value="1.4" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">Thickness of each contour line</p>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="contour-spacing">Fill opacity</label><span id="contour-spacing-val" class="text-acid">0.15</span>
+              </div>
+              <input type="range" id="contour-spacing" min="0" max="1" step="0.05" value="0.15" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">Dim tint between the lines (0 = lines only)</p>
+            </div>
+
+            <!-- Ring colour selection -->
+            <div class="border-t-2 border-white/20 pt-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] text-white/50 uppercase">Ring colours</span>
+                <div class="flex gap-1">
+                  <button id="contour-col-add" class="btn-hard text-[11px] text-acid border border-acid px-1.5 leading-none" title="Add colour" aria-label="Add ring colour">+</button>
+                  <button id="contour-col-remove" class="btn-hard text-[11px] text-mag border border-mag px-1.5 leading-none" title="Remove last colour" aria-label="Remove last ring colour">−</button>
+                </div>
+              </div>
+              <div id="contour-colors" class="flex gap-1 flex-wrap"></div>
+              <div class="flex gap-1 mt-2">
+                <button class="contour-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="blue">Blue</button>
+                <button class="contour-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="red">Red</button>
+                <button class="contour-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="acid">Acid</button>
+                <button class="contour-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="rainbow">Spectrum</button>
+              </div>
+              <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">Lines cycle through these colours by elevation</p>
+            </div>
+
+            <div class="border-t-2 border-white/20 pt-3">
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="contour-pulse">Pulse rate</label><span id="contour-pulse-val" class="text-mag">0.60 Hz</span>
+              </div>
+              <input type="range" id="contour-pulse" min="0" max="3" step="0.05" value="0.6" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">0 = static · dial drives the breathing speed</p>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="contour-depth">Pulse depth</label><span id="contour-depth-val" class="text-mag">0.50</span>
+              </div>
+              <input type="range" id="contour-depth" min="0" max="1" step="0.05" value="0.5" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">How much lines thicken + drift at the pulse peak</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- CRT (scanlines, phosphor mask, curvature) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="crt">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag CRT to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-crt" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">10</span>
+              <span class="h-display text-lg text-paper truncate">CRT</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move CRT up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move CRT down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Scanlines · phosphor mask · screen curvature · rolling flicker
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="crt-scan">Scanline depth</label><span id="crt-scan-val" class="text-acid">0.35</span>
+              </div>
+              <input type="range" id="crt-scan" min="0" max="1" step="0.05" value="0.35" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="crt-mask">Phosphor mask</label><span id="crt-mask-val" class="text-acid">0.30</span>
+              </div>
+              <input type="range" id="crt-mask" min="0" max="1" step="0.05" value="0.3" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="crt-curve">Curvature</label><span id="crt-curve-val" class="text-acid">0.20</span>
+              </div>
+              <input type="range" id="crt-curve" min="0" max="1" step="0.05" value="0.2" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="crt-flicker">Flicker</label><span id="crt-flicker-val" class="text-mag">0.15</span>
+              </div>
+              <input type="range" id="crt-flicker" min="0" max="1" step="0.05" value="0.15" />
+            </div>
+          </div>
+        </section>
+
+        <!-- STRETCH (pixel smear / scan-drag) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="stretch">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Stretch to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-stretch" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">11</span>
+              <span class="h-display text-lg text-paper truncate">STRETCH</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Stretch up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Stretch down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Smears pixels from a seed line · datamosh scan-drag
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Direction</div>
+              <div class="grid grid-cols-4 gap-0 border-2 border-paper text-[10px] font-bold uppercase">
+                <button class="stretch-dir btn-hard py-1.5 bg-acid text-ink border-r-2 border-paper" data-dir="down">Down</button>
+                <button class="stretch-dir btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-dir="up">Up</button>
+                <button class="stretch-dir btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-dir="right">Right</button>
+                <button class="stretch-dir btn-hard py-1.5 bg-ink text-paper" data-dir="left">Left</button>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="stretch-pos">Seed position</label><span id="stretch-pos-val" class="text-acid">50%</span>
+              </div>
+              <input type="range" id="stretch-pos" min="0" max="1" step="0.01" value="0.5" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="stretch-amount">Amount</label><span id="stretch-amount-val" class="text-acid">0.60</span>
+              </div>
+              <input type="range" id="stretch-amount" min="0" max="1" step="0.05" value="0.6" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="stretch-jitter">Edge jitter</label><span id="stretch-jitter-val" class="text-mag">0.20</span>
+              </div>
+              <input type="range" id="stretch-jitter" min="0" max="1" step="0.05" value="0.2" />
+              <p class="text-[9px] text-white/40 uppercase mt-0.5">Ragged, animated smear edge</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- AUTO LAYERS (a movable pipeline stage) -->
+        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="layers">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Auto Layers to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="layers-on" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">08</span>
+              <span class="h-display text-lg text-paper truncate">LAYERS</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Auto Layers up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Auto Layers down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Splits the incoming frame by brightness · route any effect per layer · re-order to feed stages above/below into it
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="layers-count">Layer count</label><span id="layers-count-val" class="text-acid">3</span>
+              </div>
+              <input type="range" id="layers-count" min="2" max="4" step="1" value="3" />
+            </div>
+            <div id="layers-list" class="space-y-1.5"><!-- built by JS --></div>
+          </div>
+        </section>
+
+      </div><!-- /#fx-list -->
+
+      <!-- ================= 3D MODEL (visible when a model is loaded) ================= -->
+      <section id="model-panel" class="hidden p-4 border-b-2 border-paper">
+        <h3 class="h-display text-lg text-paper">3D <span class="text-acid">MODEL</span></h3>
+        <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+          The model renders live into the pipeline — every stage above processes it
+        </p>
+        <div class="mt-3 space-y-3">
+          <div>
+            <div class="text-[10px] text-white/50 uppercase mb-1">Render as</div>
+            <div class="grid grid-cols-2 gap-0 border-2 border-paper text-[11px] font-bold uppercase">
+              <button class="model-mode btn-hard py-1.5 bg-acid text-ink border-r-2 border-b-2 border-paper" data-mode="surface">Surface</button>
+              <button class="model-mode btn-hard py-1.5 bg-ink text-paper border-b-2 border-paper" data-mode="wire">Wireframe</button>
+              <button class="model-mode btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-mode="points">Vertices</button>
+              <button class="model-mode btn-hard py-1.5 bg-ink text-paper" data-mode="texture">FX Texture</button>
+            </div>
+            <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+              FX Texture wraps the processed output back onto the model as a live feedback skin
+            </p>
+          </div>
+          <div>
+            <div class="flex justify-between text-[10px] uppercase text-white/60">
+              <label for="model-spin">Spin speed</label><span id="model-spin-val" class="text-acid">0.40</span>
+            </div>
+            <input type="range" id="model-spin" min="0" max="2" step="0.05" value="0.4" />
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= KEYFRAME TIMELINE ================= -->
+      <section class="p-4 border-b-2 border-paper">
+        <div class="flex items-center justify-between">
+          <h3 class="h-display text-lg text-paper">TIMELINE <span class="text-acid">◆</span></h3>
+          <div class="text-[10px] text-white/50 uppercase" id="anim-time">0.0 / 5.0s</div>
+        </div>
+        <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+          Press <span class="text-acid">◆</span> beside any slider to key it at the playhead
+        </p>
+
+        <div class="flex items-center gap-2 mt-3">
+          <button id="anim-play" class="btn-hard w-10 h-8 border-2 border-paper text-acid font-bold" aria-label="Play or pause animation">❚❚</button>
+          <input type="range" id="anim-scrub" min="0" max="1000" value="0" step="1" class="flex-1" aria-label="Scrub animation" />
+        </div>
+
+        <div class="flex items-center gap-2 mt-3">
+          <label for="anim-dur" class="text-[10px] uppercase text-white/60">Loop length</label>
+          <input type="number" id="anim-dur" min="0.5" max="60" step="0.5" value="5"
+                 class="w-16 bg-ink border-2 border-paper text-acid text-xs px-2 py-1 text-center" />
+          <span class="text-[10px] text-white/50">sec</span>
+          <button id="kf-clear" class="btn-hard ml-auto text-[10px] uppercase text-mag border border-mag px-2 py-1">Clear keys</button>
+        </div>
+
+        <!-- Dynamically populated keyframe tracks -->
+        <div id="kf-tracks" class="mt-3 space-y-2">
+          <p id="kf-empty" class="text-[9px] text-white/30 uppercase">No keyframes · pipeline is static</p>
+        </div>
+        <button id="kf-del" class="btn-hard hidden w-full mt-2 py-1.5 text-[10px] uppercase bg-mag text-ink font-bold">Delete selected key</button>
+      </section>
+
+      <!-- ================= OUTPUT / TRANSPARENCY ================= -->
+      <section class="p-4 border-b-2 border-paper">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="bg-key" class="fx-toggle" />
+          <span class="h-display text-lg text-paper">TRANSPARENT <span class="text-acid">OUT</span></span>
+        </label>
+        <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+          Keys out the background so exports carry alpha (PNG always · WebM in Chrome)
+        </p>
+        <div class="mt-3 space-y-3">
+          <div>
+            <div class="text-[10px] text-white/50 uppercase mb-1">Background is</div>
+            <div class="grid grid-cols-2 gap-0 border-2 border-paper">
+              <button id="bg-dark"  class="btn-hard py-1.5 text-xs font-bold uppercase bg-paper text-ink" aria-pressed="true">Dark</button>
+              <button id="bg-light" class="btn-hard py-1.5 text-xs font-bold uppercase bg-ink text-paper" aria-pressed="false">Light</button>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[10px] uppercase text-white/60">
+              <label for="bg-thresh">Key threshold</label><span id="bg-thresh-val" class="text-acid">40</span>
+            </div>
+            <input type="range" id="bg-thresh" min="0" max="255" step="1" value="40" />
+          </div>
+          <div>
+            <div class="flex justify-between text-[10px] uppercase text-white/60">
+              <label for="bg-feather">Feather</label><span id="bg-feather-val" class="text-acid">10</span>
+            </div>
+            <input type="range" id="bg-feather" min="0" max="80" step="1" value="10" />
+          </div>
+        </div>
+      </section>
+
+      <!-- EXPORT ENGINE -->
+      <section class="p-4 border-b-2 border-paper space-y-3">
+        <h3 class="h-display text-lg text-paper">EXPORT <span class="text-acid">ENGINE</span></h3>
+
+        <!-- Output resolution: caps the longest edge of PNG + video export.
+             Never upscales past the source's native size. -->
+        <div>
+          <div class="text-[10px] text-white/50 uppercase mb-1">Output resolution</div>
+          <div id="res-grid" class="grid grid-cols-4 gap-0 border-2 border-paper text-[11px] font-bold uppercase">
+            <button class="res-btn btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-cap="720">720</button>
+            <button class="res-btn btn-hard py-1.5 bg-acid text-ink border-r-2 border-paper" data-cap="1080">1080</button>
+            <button class="res-btn btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-cap="1440">1440</button>
+            <button class="res-btn btn-hard py-1.5 bg-ink text-paper" data-cap="2160">4K</button>
+          </div>
+          <button id="res-source" class="res-btn btn-hard w-full mt-0 py-1.5 border-2 border-t-0 border-paper bg-ink text-paper text-[11px] font-bold uppercase" data-cap="source">Source (native)</button>
+          <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+            Preview stays at 960p for speed · export renders at full res. Heavy stacks may drop the recording's FPS.
+          </p>
+        </div>
+
+        <button id="btn-export-frame"
+                class="btn-hard w-full py-3 bg-acid text-ink font-bold text-sm uppercase border-2 border-acid disabled:bg-ink disabled:text-white/30 disabled:border-white/30">
+          ▙ Save frame [PNG]
+        </button>
+        <button id="btn-record"
+                class="btn-hard w-full py-3 bg-ink text-mag font-bold text-sm uppercase border-2 border-mag disabled:text-white/30 disabled:border-white/30">
+          ● Record output [WEBM]
+        </button>
+        <p class="text-[9px] text-white/40 uppercase leading-relaxed">
+          Recording captures the processed canvas stream in realtime. Press again to stop &amp; download.
+        </p>
+      </section>
+
+      <!-- EMERGENCY RESET -->
+      <section class="p-4">
+        <button id="btn-reset" class="btn-hard w-full warning-stripes p-1 block" aria-label="Emergency reset: disable all effects and restore defaults">
+          <span class="warning-core block bg-ink text-paper font-bold text-sm uppercase py-3 border-2 border-paper tracking-widest">
+            ⚠ Emergency reset
+          </span>
+        </button>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ================= STATUS FOOTER ================= -->
+  <footer class="flex-none border-t-2 border-paper bg-ink flex text-[10px] uppercase">
+    <div class="px-4 py-1.5 border-r border-white/30 text-acid" id="status-line">STANDBY // AWAITING INPUT</div>
+    <div class="px-4 py-1.5 border-r border-white/30 text-white/50" id="status-res">RES —</div>
+    <div class="px-4 py-1.5 border-r border-white/30 text-white/50" id="status-fx">FX 0/11</div>
+    <div class="px-4 py-1.5 text-acid" id="status-order">ORD D·H·A·A·N</div>
+    <div class="ml-auto px-4 py-1.5 text-mag">DO NOT FEED UNTRUSTED DATA</div>
+  </footer>
+</div>
+
+<script>
+/* ==============================================================
+   SIGNAL//PROCESSOR — application logic (vanilla JS)
+
+   Architecture
+   ────────────
+   media source (video / image / GIF frames)
+        │  drawn each rAF tick at capped "processing" resolution
+        ▼
+   bufA ⇄ bufB  (offscreen ping-pong canvases)
+        │  04 RGB split + glitch  → pixel op
+        │  01 dither              → pixel op (in place)
+        │  02 halftone            → geometric redraw
+        │  03 ascii               → text redraw
+        ▼
+   #display canvas  →  screen / PNG export / MediaRecorder
+   ============================================================== */
+
+'use strict';
+
+/* ---------- Constants ---------- */
+const ACID   = { r: 204, g: 255, b: 0 };     // #CCFF00
+const MAGENTA = '#FF00A8';
+const PROC_MAX = 960;                         // max processing dimension (perf cap)
+const ASCII_RAMP = '@#%W8B$*+=~-:. ';         // dark → light
+
+/* ---------- DOM handles ---------- */
+const $ = (id) => document.getElementById(id);
+const display   = $('display');
+const dCtx      = display.getContext('2d');
+const dropzone  = $('dropzone');
+const fileInput = $('file-input');
+const workspace = $('workspace');
+const transport = $('transport');
+const btnPlay   = $('btn-play');
+const btnMute   = $('btn-mute');
+const seekBar   = $('seek');
+const timecode  = $('timecode');
+
+/* Offscreen ping-pong buffers — willReadFrequently hints the browser
+   to keep the backing store CPU-side for fast getImageData. */
+const bufA = document.createElement('canvas');
+const bufB = document.createElement('canvas');
+const ctxA = bufA.getContext('2d', { willReadFrequently: true });
+const ctxB = bufB.getContext('2d', { willReadFrequently: true });
+
+/* Persistent canvas holding the most recently decoded GIF frame */
+const gifCanvas = document.createElement('canvas');
+const gifCtx = gifCanvas.getContext('2d');
+
+/* ---------- Mutable state ---------- */
+const state = {
+  mediaType: null,        // 'video' | 'image' | 'gif' | null
+  video: null,            // <video> element when mediaType === 'video'
+  image: null,            // <img>  element when mediaType === 'image'
+  objectURL: null,        // blob URL to revoke on unload
+  W: 0, H: 0,             // processing resolution
+  nativeW: 0, nativeH: 0, // source's native resolution (for re-fitting)
+  previewCap: 960,        // fast realtime cap for on-screen preview
+  exportCap: 1080,        // longest-edge cap used for recording / PNG export
+  exportCapId: '1080',    // which resolution button is active
+  busyExport: false,      // pause the rAF compositor during a PNG grab
+
+  gif: {                  // ImageDecoder-driven GIF playback
+    decoder: null,
+    frameCount: 0,
+    index: 0,
+    timer: 0,
+    playing: true,
+    supported: ('ImageDecoder' in window),
+  },
+
+  /* Output palette that drives the Dither / Halftone / ASCII stages.
+     `colors` is an ordered dark→light list of {r,g,b}. `id` names the
+     active preset, or 'custom' once the user edits a swatch. */
+  palette: { id: 'mono', colors: [{ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 }] },
+
+  /* Processing order — an ordered list of effect keys. The render loop
+     walks THIS array, so the user's DOM reordering directly controls
+     which stage feeds which. Kept in sync with #fx-list DOM order. */
+  order: ['dither', 'halftone', 'ascii', 'aberr', 'noise', 'blocks', 'shapes', 'depth', 'contour', 'crt', 'stretch', 'layers'],
+
+  fx: {
+    dither:   { on: false, scale: 1 },
+    halftone: { on: false, scale: 8, contrast: 1.4 },
+    ascii:    { on: false, size: 10 },
+    aberr:    { on: false, offset: 4, glitch: 0 },
+    noise:    { on: false, block: 10, speed: 0.35, density: 0.7, thresh: 90, target: 'dark' },
+    blocks:   { on: false, size: 12, chaos: 0.4 },
+    shapes:   { on: false, density: 0.35, size: 28, thresh: 30, kinds: ['rect', 'circle', 'cross'], random: true },
+    depth:    { on: false, bias: 0.35, smooth: 2, near: 'light' },
+    contour:  { on: false, rings: 16, weight: 1.4, fill: 0.15, pulse: 0.6, depth: 0.5, hide: false,
+                colors: [{ r: 40, g: 90, b: 255 }, { r: 90, g: 160, b: 255 }, { r: 200, g: 230, b: 255 }] },
+    crt:      { on: false, scan: 0.35, mask: 0.3, curve: 0.2, flicker: 0.15 },
+    stretch:  { on: false, dir: 'down', pos: 0.5, amount: 0.6, jitter: 0.2 },
+  },
+
+  /* 3D model source (three.js renders into an offscreen canvas that the
+     pipeline consumes like any other media frame). */
+  model: { loaded: false, mode: 'surface', spin: 0.4 },
+
+  /* Auto layer-split: segment the frame into `count` luminance bands
+     (index 0 = darkest); `assign[k]` routes band k through one effect
+     ('none' | any fx key). Runs before the global stage stack. */
+  layers: { on: false, count: 3, assign: ['none', 'none', 'none', 'none'] },
+
+  /* Independent animation clock that drives keyframed parameters. Works
+     for every media type (video, gif, still), loops over `duration`. */
+  anim: { playing: true, t: 0, duration: 5, lastNow: null },
+
+  /* Keyframe tracks, keyed 'effect.param' → sorted [{ t, v }, ...].
+     A param with ≥1 keyframe is animation-driven; otherwise the slider
+     value is used directly. */
+  keys: {},
+  selKey: null,           // { param, index } of the selected keyframe
+
+  /* Background keyer for transparent export. */
+  bgKey: { on: false, target: 'dark', thresh: 40, feather: 10 },
+
+  recorder: null,         // MediaRecorder instance while recording
+  recChunks: [],
+  seeking: false,         // true while user drags the seek bar
+  rafId: 0,
+};
+
+/* ==============================================================
+   MEDIA LOADING / UNLOADING
+   ============================================================== */
+
+/** Fully tear down the current media and free memory. Called before
+    every new load — this is the "properly clear memory" contract. */
+function unloadMedia() {
+  // Stop any in-flight recording first (its stream dies with the media).
+  if (state.recorder && state.recorder.state !== 'inactive') stopRecording();
+
+  // Video: pause, detach the src and force the element to drop buffers.
+  if (state.video) {
+    state.video.pause();
+    state.video.removeAttribute('src');
+    state.video.load();
+    state.video = null;
+  }
+
+  // Image: drop the reference so it can be GC'd.
+  state.image = null;
+
+  // GIF: cancel the frame timer and close the decoder (frees decode buffers).
+  clearTimeout(state.gif.timer);
+  if (state.gif.decoder) { try { state.gif.decoder.close(); } catch (_) {} }
+  state.gif.decoder = null;
+  state.gif.frameCount = 0;
+  state.gif.index = 0;
+
+  // Revoke the blob URL so the underlying file data can be released.
+  if (state.objectURL) { URL.revokeObjectURL(state.objectURL); state.objectURL = null; }
+
+  // 3D model: free geometry/material/texture GPU memory.
+  if (state.model.loaded) disposeModel();
+
+  state.mediaType = null;
+}
+
+/** Compute a processing size that preserves aspect ratio but never
+    exceeds `cap` on the longest edge (and never upscales past native). */
+function fitProcessingSize(w, h, cap) {
+  const s = Math.min(1, cap / Math.max(w, h));
+  return { W: Math.max(2, Math.round(w * s)), H: Math.max(2, Math.round(h * s)) };
+}
+
+/** Resize every canvas in the pipeline. `cap` defaults to the fast
+    preview cap; recording / PNG export pass a higher cap temporarily.
+    The source's native dimensions are remembered so we can re-fit to
+    any cap on demand without reloading. */
+function sizePipeline(w, h, cap = state.previewCap) {
+  if (w) { state.nativeW = w; state.nativeH = h; }        // remember native
+  const nw = state.nativeW, nh = state.nativeH;
+  const { W, H } = fitProcessingSize(nw, nh, cap);
+  state.W = W; state.H = H;
+  for (const c of [bufA, bufB, display]) { c.width = W; c.height = H; }
+  $('status-res').textContent = `RES ${W}×${H}`;
+}
+
+/** Entry point for any accepted File object. Routes by MIME type. */
+function loadFile(file) {
+  const type = (file.type || '').toLowerCase();
+  const name = file.name.toLowerCase();
+
+  // GIF and WebP can both be animated; route them through the frame
+  // decoder (which also handles the static case). 3D models go to the
+  // three.js path. Everything else is a plain image or a video.
+  const isGif   = type === 'image/gif'  || name.endsWith('.gif');
+  const isWebp  = type === 'image/webp' || name.endsWith('.webp');
+  const isImage = !isGif && !isWebp && (type.startsWith('image/') || /\.(png|jpe?g)$/.test(name));
+  const isVideo = type.startsWith('video/') || /\.(mp4|mov)$/.test(name);
+  const modelExt = (name.match(/\.(glb|gltf|obj)$/) || [])[1] || null;
+
+  if (!isGif && !isWebp && !isImage && !isVideo && !modelExt) {
+    setStatus('REJECTED // UNSUPPORTED FORMAT', true);
+    return;
+  }
+
+  unloadMedia();                                   // free the previous source
+  state.objectURL = URL.createObjectURL(file);
+  $('hdr-media').textContent = file.name.toUpperCase().slice(0, 40);
+
+  if (modelExt)             loadModel(file, modelExt);
+  else if (isVideo)         loadVideo(state.objectURL);
+  else if (isGif)           loadAnimated(file, 'image/gif');
+  else if (isWebp)          loadAnimated(file, 'image/webp');
+  else                      loadImage(state.objectURL);
+}
+
+/* ----- Video ----- */
+function loadVideo(url) {
+  const v = document.createElement('video');
+  v.src = url;
+  v.loop = true;
+  v.muted = true;              // muted allows autoplay everywhere
+  v.playsInline = true;
+  v.addEventListener('loadedmetadata', () => {
+    state.video = v;
+    state.mediaType = 'video';
+    sizePipeline(v.videoWidth, v.videoHeight);
+    showStage(true);
+    v.play().catch(() => {});  // some browsers still require a gesture
+    setStatus('SIGNAL LOCKED // VIDEO STREAM');
+    updateTransportUI();
+  }, { once: true });
+  v.addEventListener('error', () => setStatus('DECODE FAULT // VIDEO CODEC UNSUPPORTED', true));
+}
+
+/* ----- Static image ----- */
+function loadImage(url) {
+  const img = new Image();
+  img.onload = () => {
+    state.image = img;
+    state.mediaType = 'image';
+    sizePipeline(img.naturalWidth, img.naturalHeight);
+    showStage(false);
+    setStatus('SIGNAL LOCKED // STATIC FRAME');
+  };
+  img.onerror = () => setStatus('DECODE FAULT // IMAGE UNREADABLE', true);
+  img.src = url;
+}
+
+/* ----- Animated GIF / WebP -----
+   Canvas drawImage() of an animated <img> only ever paints frame 0, so
+   for real playback we decode frames ourselves with the WebCodecs
+   ImageDecoder API (Chromium). Handles both image/gif and image/webp.
+   Falls back to a clean static image when the decoder is unavailable or
+   the file turns out to have a single frame. `label` drives status text. */
+async function loadAnimated(file, mime) {
+  const label = mime === 'image/webp' ? 'WEBP' : 'GIF';
+
+  if (!state.gif.supported) {
+    loadImage(state.objectURL);
+    setStatus(`SIGNAL LOCKED // ${label} STATIC (NO IMAGEDECODER)`);
+    return;
+  }
+  try {
+    const buf = await file.arrayBuffer();
+    const decoder = new ImageDecoder({ data: buf, type: mime });
+    await decoder.tracks.ready;
+    await decoder.completed.catch(() => {});      // wait for full parse if possible
+
+    const track = decoder.tracks.selectedTrack;
+    const frameCount = track.frameCount || 1;
+
+    // Single-frame WebP/GIF → treat as a static image (no frame clock).
+    if (frameCount <= 1) {
+      const only = await decoder.decode({ frameIndex: 0 });
+      sizePipeline(only.image.displayWidth, only.image.displayHeight);
+      gifCanvas.width = state.W; gifCanvas.height = state.H;
+      // Reuse gifCanvas as a still source so we don't depend on <img>
+      // decoding animated webp (which some browsers refuse).
+      gifCtx.drawImage(only.image, 0, 0, state.W, state.H);
+      only.image.close();
+      decoder.close();
+      state.image = gifCanvas;              // point the "image" source at the still
+      state.mediaType = 'image';
+      showStage(false);
+      setStatus(`SIGNAL LOCKED // ${label} STATIC FRAME`);
+      return;
+    }
+
+    state.gif.decoder = decoder;
+    state.gif.frameCount = frameCount;
+    state.gif.index = 0;
+    state.gif.playing = true;
+    state.mediaType = 'gif';
+
+    // Decode frame 0 to learn dimensions, then start the frame clock.
+    const first = await decoder.decode({ frameIndex: 0 });
+    sizePipeline(first.image.displayWidth, first.image.displayHeight);
+    gifCanvas.width = state.W; gifCanvas.height = state.H;
+    paintGifFrame(first.image);
+    showStage(true);
+    updateTransportUI();
+    setStatus(`SIGNAL LOCKED // ${label} LOOP`);
+    scheduleNextGifFrame(first.image.duration);
+  } catch (err) {
+    console.error(`${label} decode failed, falling back to static:`, err);
+    loadImage(state.objectURL);
+  }
+}
+
+/** Draw a decoded VideoFrame into the persistent gifCanvas, then close
+    it immediately — VideoFrames hold GPU/decoder memory. */
+function paintGifFrame(videoFrame) {
+  gifCtx.drawImage(videoFrame, 0, 0, gifCanvas.width, gifCanvas.height);
+  videoFrame.close();
+}
+
+/** Advance the GIF using each frame's own duration (microseconds). */
+function scheduleNextGifFrame(durationUs) {
+  const ms = Math.max(20, (durationUs || 100000) / 1000);
+  state.gif.timer = setTimeout(async () => {
+    if (!state.gif.decoder || state.mediaType !== 'gif') return;
+    if (!state.gif.playing) { scheduleNextGifFrame(100000); return; }
+    state.gif.index = (state.gif.index + 1) % state.gif.frameCount;
+    try {
+      const res = await state.gif.decoder.decode({ frameIndex: state.gif.index });
+      const dur = res.image.duration;
+      paintGifFrame(res.image);
+      scheduleNextGifFrame(dur);
+    } catch (_) { /* decoder was closed mid-flight; ignore */ }
+  }, ms);
+}
+
+/* ==============================================================
+   3D MODEL SOURCE (three.js)
+   Models render into an offscreen WebGL canvas that the 2D pipeline
+   consumes exactly like a video frame — so every effect, the recorder,
+   layers, and transparent export all work on the 3D render.
+   ============================================================== */
+
+const threeCanvas = document.createElement('canvas');
+const T3 = {                     // three.js runtime handles
+  libsReady: false,
+  renderer: null, scene: null, camera: null,
+  group: null,                   // current display object (mode-dependent)
+  geoms: [],                     // extracted geometries from the file
+  fxTexture: null,               // CanvasTexture of the display canvas (feedback)
+  lastSpinT: null,
+};
+
+/** Lazy-load three.js + loaders from CDN on first model use. Each file
+    tries jsDelivr first and falls back to unpkg if that fails. */
+function ensureThreeLibs() {
+  if (T3.libsReady) return Promise.resolve();
+  const files = [
+    'build/three.min.js',
+    'examples/js/loaders/GLTFLoader.js',
+    'examples/js/loaders/OBJLoader.js',
+  ];
+  const CDNS = [
+    'https://cdn.jsdelivr.net/npm/three@0.128.0/',
+    'https://unpkg.com/three@0.128.0/',
+  ];
+  const loadOne = (file, cdnIdx = 0) => new Promise((res, rej) => {
+    if (cdnIdx >= CDNS.length) { rej(new Error('All CDNs failed for ' + file)); return; }
+    const s = document.createElement('script');
+    s.src = CDNS[cdnIdx] + file;
+    s.onload = res;
+    s.onerror = () => { s.remove(); loadOne(file, cdnIdx + 1).then(res, rej); };
+    document.head.appendChild(s);
+  });
+  // Sequential: the loaders depend on the THREE global existing first.
+  return files.reduce((p, f) => p.then(() => loadOne(f)), Promise.resolve())
+    .then(() => { T3.libsReady = true; });
+}
+
+/** One-time three.js scene setup (reused across model loads). */
+function initThreeScene() {
+  if (T3.renderer) return;
+  threeCanvas.width = 1024; threeCanvas.height = 1024;
+  T3.renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true, preserveDrawingBuffer: true });
+  T3.renderer.setSize(1024, 1024, false);
+  T3.scene = new THREE.Scene();
+  T3.scene.background = new THREE.Color(0x000000);
+  T3.camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
+  T3.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 0.9);
+  key.position.set(2, 3, 4);
+  T3.scene.add(key);
+  const rim = new THREE.DirectionalLight(0xccff00, 0.35);   // acid rim light
+  rim.position.set(-3, -1, -2);
+  T3.scene.add(rim);
+}
+
+async function loadModel(file, ext) {
+  setStatus('LOADING // 3D RUNTIME…');
+  try {
+    await ensureThreeLibs();
+    initThreeScene();
+
+    // Parse the file into a THREE object.
+    let root;
+    if (ext === 'obj') {
+      const text = await file.text();
+      root = new THREE.OBJLoader().parse(text);
+    } else {
+      const buf = await file.arrayBuffer();
+      root = await new Promise((res, rej) =>
+        new THREE.GLTFLoader().parse(buf, '', (g) => res(g.scene), rej));
+    }
+
+    // Harvest every mesh geometry (world-transformed) from the file.
+    disposeModel();
+    root.updateMatrixWorld(true);
+    root.traverse((node) => {
+      if (node.isMesh && node.geometry) {
+        const geo = node.geometry.clone();
+        geo.applyMatrix4(node.matrixWorld);
+        T3.geoms.push(geo);
+      }
+    });
+    if (!T3.geoms.length) { setStatus('DECODE FAULT // NO MESHES IN FILE', true); return; }
+
+    // Center + normalize scale so any model fits the camera framing.
+    const box = new THREE.Box3();
+    for (const g of T3.geoms) { g.computeBoundingBox(); box.union(g.boundingBox); }
+    const center = box.getCenter(new THREE.Vector3());
+    const sizeV = box.getSize(new THREE.Vector3());
+    const scale = 2 / Math.max(sizeV.x, sizeV.y, sizeV.z, 1e-6);
+    for (const g of T3.geoms) { g.translate(-center.x, -center.y, -center.z); g.scale(scale, scale, scale); }
+
+    T3.camera.position.set(0, 0.4, 3.4);
+    T3.camera.lookAt(0, 0, 0);
+
+    state.mediaType = 'model';
+    state.model.loaded = true;
+    buildModelGroup(state.model.mode);      // build display object for mode
+
+    sizePipeline(1024, 1024);
+    showStage(false);
+    $('model-panel').classList.remove('hidden');
+    setStatus(`SIGNAL LOCKED // 3D ${ext.toUpperCase()} · ${T3.geoms.length} MESH`);
+  } catch (err) {
+    console.error('Model load failed:', err);
+    setStatus('DECODE FAULT // MODEL UNREADABLE (CHECK CONSOLE)', true);
+  }
+}
+
+/** Topographic slice ShaderMaterial: draws a line wherever the surface
+    crosses an iso-height plane in *model space* (worldY), producing true
+    geometric cross-sections like a CT scan — independent of lighting or
+    surface colour, which is what brightness-based contours can't do on a
+    uniform white mesh. Because slices key off Y, they stay horizontal
+    while the model spins. Uniforms are refreshed every frame by
+    updateModel3D so all contour sliders + the pulse work live. */
+function makeTopoMaterial() {
+  const uniforms = {
+    uSpacing: { value: 0.14 },        // world units between slice planes
+    uPhase:   { value: 0 },           // pulse drift
+    uHalf:    { value: 0.012 },       // line half-thickness (world units)
+    uNum:     { value: 3 },           // active colour count
+    uCols:    { value: Array.from({ length: 8 }, () => new THREE.Vector3(0.16, 0.35, 1)) },
+    uHide:    { value: 0 },           // 1 = lines only (discard base)
+    uBoost:   { value: 0 },           // pulse brightness lift
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+      varying float vY;
+      varying vec3 vN;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vY = wp.y;
+        vN = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }`,
+    fragmentShader: `
+      uniform float uSpacing, uPhase, uHalf, uHide, uBoost;
+      uniform int uNum;
+      uniform vec3 uCols[8];
+      varying float vY;
+      varying vec3 vN;
+      void main() {
+        float t = (vY + uPhase) / uSpacing;
+        float band = fract(t);
+        float d = min(band, 1.0 - band) * uSpacing;   // dist to nearest plane
+        float line = 1.0 - smoothstep(uHalf * 0.55, uHalf, d);
+
+        // Slice colour cycles by plane index (WebGL1 const-index loop).
+        int idx = int(mod(floor(t), float(uNum)));
+        vec3 lc = uCols[0];
+        for (int i = 0; i < 8; i++) { if (i == idx) lc = uCols[i]; }
+
+        // Base: simple lambert-ish white statue shade, or nothing.
+        if (uHide > 0.5 && line < 0.02) discard;
+        vec3 base = uHide > 0.5 ? vec3(0.0)
+          : vec3(0.84, 0.86, 0.88) *
+            (0.35 + 0.65 * max(dot(normalize(vN), normalize(vec3(0.4, 0.8, 0.6))), 0.0));
+        vec3 col = mix(base, lc * (1.0 + 0.35 * uBoost), line);
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  });
+  mat.userData.isTopo = true;
+  return mat;
+}
+
+/** Push live contour params into every topo material each frame. */
+function updateTopoUniforms() {
+  if (!T3.group) return;
+  const c = state.fx.contour;
+  const now = performance.now() / 1000;
+  const breath = c.pulse > 0 ? (0.5 - 0.5 * Math.cos(now * c.pulse * Math.PI * 2)) : 0;
+  const spacing = 2.3 / Math.max(2, c.rings);        // model is ~2 units tall
+  T3.group.traverse((n) => {
+    const m = n.material;
+    if (!m || !m.userData?.isTopo) return;
+    const u = m.uniforms;
+    u.uSpacing.value = spacing;
+    u.uPhase.value = breath * spacing;                // slices sweep with the pulse
+    u.uHalf.value = c.weight * 0.011 * (1 + c.depth * 1.4 * breath);  // fatten at peak
+    u.uHide.value = c.hide ? 1 : 0;
+    u.uBoost.value = breath;
+    const cols = c.colors.length ? c.colors : [{ r: 40, g: 90, b: 255 }];
+    u.uNum.value = Math.min(8, cols.length);
+    for (let i = 0; i < 8; i++) {
+      const src = cols[Math.min(i, cols.length - 1)];
+      u.uCols.value[i].set(src.r / 255, src.g / 255, src.b / 255);
+    }
+  });
+}
+
+/** (Re)build the displayed object for a render mode: shaded surfaces,
+    wireframes, raw vertices, or the FX-feedback texture skin. */
+function buildModelGroup(mode) {
+  if (!T3.scene) return;
+  if (T3.group) { T3.scene.remove(T3.group); disposeGroupMaterials(T3.group); }
+  const rotY = T3.group ? T3.group.rotation.y : 0;   // keep spin continuity
+  T3.group = new THREE.Group();
+
+  for (const geo of T3.geoms) {
+    let obj;
+    switch (mode) {
+      case 'wire':
+        obj = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xccff00, wireframe: true }));
+        break;
+      case 'points':
+        obj = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xccff00, size: 0.012 }));
+        break;
+      case 'texture': {
+        // Live feedback skin: the model wears last frame's processed
+        // output. Needs UVs — models without them render dark.
+        // When CONTOUR is on, the slice shader takes over instead.
+        if (state.fx.contour.on) { obj = new THREE.Mesh(geo, makeTopoMaterial()); break; }
+        if (!T3.fxTexture) T3.fxTexture = new THREE.CanvasTexture(display);
+        obj = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: T3.fxTexture }));
+        break;
+      }
+      default:  // 'surface'
+        // CONTOUR on a model = true geometric slice planes via shader.
+        obj = state.fx.contour.on
+          ? new THREE.Mesh(geo, makeTopoMaterial())
+          : new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+              color: 0xbfc6cc, roughness: 0.55, metalness: 0.15, flatShading: true,
+            }));
+    }
+    T3.group.add(obj);
+  }
+  T3.group.rotation.y = rotY;
+  T3.scene.add(T3.group);
+}
+
+/** Per-frame model update: spin + feedback texture + render. Called by
+    composite() before the frame is rasterized into the pipeline. */
+function updateModel3D() {
+  if (!T3.renderer || !T3.group) return;
+  const now = performance.now() / 1000;
+  const dt = T3.lastSpinT == null ? 0 : Math.min(0.1, now - T3.lastSpinT);
+  T3.lastSpinT = now;
+  T3.group.rotation.y += state.model.spin * dt * Math.PI;
+  if (state.model.mode === 'texture' && T3.fxTexture) T3.fxTexture.needsUpdate = true;
+  updateTopoUniforms();                 // live contour sliders + pulse
+  T3.renderer.render(T3.scene, T3.camera);
+}
+
+function disposeGroupMaterials(group) {
+  group.traverse((n) => { if (n.material) n.material.dispose?.(); });
+}
+
+/** Free geometry/material GPU memory when swapping models or media. */
+function disposeModel() {
+  if (T3.group && T3.scene) { T3.scene.remove(T3.group); disposeGroupMaterials(T3.group); }
+  T3.group = null;
+  for (const g of T3.geoms) g.dispose();
+  T3.geoms = [];
+  if (T3.fxTexture) { T3.fxTexture.dispose(); T3.fxTexture = null; }
+  state.model.loaded = false;
+  $('model-panel').classList.add('hidden');
+}
+
+/* ----- Stage / transport visibility ----- */
+function showStage(showTransport) {
+  dropzone.classList.add('hidden');
+  display.classList.remove('hidden');
+  transport.classList.toggle('hidden', !showTransport);
+  // Seek + audio only make sense for real <video> sources.
+  const isVideo = state.mediaType === 'video';
+  seekBar.disabled = !isVideo;
+  btnMute.disabled = !isVideo;
+  btnMute.classList.toggle('opacity-30', !isVideo);
+  // Re-resolve the export cap against the newly loaded media's native
+  // size (matters for the "Source" option).
+  if (typeof setExportCap === 'function') setExportCap(state.exportCapId || '1080');
+}
+
+/* ==============================================================
+   EFFECTS — pixel operations
+   ============================================================== */
+
+const clampi = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+
+/* 8×8 Bayer threshold matrix, normalized 0..1 in use. */
+const BAYER8 = [
+   0,32, 8,40, 2,34,10,42,
+  48,16,56,24,50,18,58,26,
+  12,44, 4,36,14,46, 6,38,
+  60,28,52,20,62,30,54,22,
+   3,35,11,43, 1,33, 9,41,
+  51,19,59,27,49,17,57,25,
+  15,47, 7,39,13,45, 5,37,
+  63,31,55,23,61,29,53,21,
+];
+
+/** 04 — Chromatic aberration + glitch corruption.
+    Reads src pixels, writes shifted channels into dst. Glitch adds
+    per-row horizontal displacement bands and static bursts. */
+function applyAberration(srcCtx, dstCtx, W, H, offset, glitch, layerMode = false) {
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+  const out = dstCtx.createImageData(W, H);
+  const o = out.data;
+
+  // Randomized horizontal band displacement (rogue data corruption).
+  const rowShift = new Int16Array(H);
+  if (glitch > 0 && Math.random() < 0.3 + glitch * 0.6) {
+    const bands = 1 + Math.floor(Math.random() * glitch * 10);
+    for (let b = 0; b < bands; b++) {
+      const y0 = Math.floor(Math.random() * H);
+      const bh = 1 + Math.floor(Math.random() * (2 + glitch * 24));
+      const sh = Math.floor((Math.random() - 0.5) * glitch * 90);
+      for (let y = y0; y < Math.min(H, y0 + bh); y++) rowShift[y] = sh;
+    }
+  }
+
+  const oy = offset >> 1; // vertical component of the split
+  for (let y = 0; y < H; y++) {
+    const shift = rowShift[y];
+    const yr = clampi(y - oy, 0, H - 1);
+    const yb = clampi(y + oy, 0, H - 1);
+    for (let x = 0; x < W; x++) {
+      const xs = clampi(x + shift, 0, W - 1);
+      const i = (y * W + x) * 4;
+      o[i]     = src[(yr * W + clampi(xs - offset, 0, W - 1)) * 4];     // R ← up-left
+      o[i + 1] = src[(y  * W + xs) * 4 + 1];                            // G ← center
+      o[i + 2] = src[(yb * W + clampi(xs + offset, 0, W - 1)) * 4 + 2]; // B ← down-right
+      // Layer mode carries the (shifted) source alpha so the layer's
+      // silhouette displaces with the glitch instead of going opaque.
+      o[i + 3] = layerMode ? src[(y * W + xs) * 4 + 3] : 255;
+    }
+  }
+
+  // Digital static bursts: brief salt noise, occasionally chartreuse.
+  if (glitch > 0 && Math.random() < glitch * 0.8) {
+    const n = Math.floor(glitch * W * H * 0.008);
+    for (let k = 0; k < n; k++) {
+      const i = (Math.random() * W * H | 0) * 4;
+      if (layerMode && o[i + 3] < 8) continue;   // keep bursts inside the layer
+      if (Math.random() < 0.12) { o[i] = ACID.r; o[i + 1] = ACID.g; o[i + 2] = ACID.b; }
+      else { const v = Math.random() < 0.5 ? 255 : 0; o[i] = o[i + 1] = o[i + 2] = v; }
+    }
+  }
+
+  dstCtx.putImageData(out, 0, 0);
+}
+
+/* Palette helpers ------------------------------------------------------
+   `palette.colors` is an ordered dark→light list of {r,g,b}. These map a
+   luminance 0..255 onto that list so every palette-driven stage supports
+   2, 3, 4, or 5+ colours, not just mono/acid. */
+const rgbCss = (c) => `rgb(${c.r},${c.g},${c.b})`;
+
+/** Nearest palette colour for a luminance, across the whole list
+    (index 0 = darkest). Used by halftone/ascii ink selection. */
+function paletteColorFor(colors, lum, loIndex = 0) {
+  const N = colors.length;
+  const span = N - 1 - loIndex;
+  if (span <= 0) return colors[N - 1];
+  let idx = loIndex + Math.round((lum / 255) * span);
+  return colors[clampi(idx, loIndex, N - 1)];
+}
+
+/** 01 — Ordered Bayer dithering, in place. Generalized to any palette:
+    luminance is placed on the palette axis and the Bayer threshold picks
+    between the two nearest palette colours, giving true multi-tone
+    ordered dithering (mono = 2 colours, acid = 3, etc.). */
+function applyDither(ctx, W, H, scale, palette, layerMode = false) {
+  const colors = palette.colors, N = colors.length;
+  const img = ctx.getImageData(0, 0, W, H);
+  const d = img.data;
+  for (let y = 0; y < H; y++) {
+    const by = ((y / scale) | 0) & 7;
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if (layerMode && d[i + 3] < 8) continue;   // leave transparent px alone
+      const lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      const t = (BAYER8[(by << 3) | (((x / scale) | 0) & 7)] + 0.5) / 64; // 0..1 threshold
+
+      // Continuous position on the palette axis, then dither between the
+      // two bracketing colours using the ordered threshold.
+      const p = (lum / 255) * (N - 1);
+      const lo = Math.floor(p);
+      const frac = p - lo;
+      const idx = (frac > t) ? Math.min(N - 1, lo + 1) : lo;
+      const c = colors[idx];
+      d[i] = c.r; d[i + 1] = c.g; d[i + 2] = c.b;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/** 02 — Halftone dot matrix. Background = darkest palette colour; dot ink
+    is chosen from the lighter palette colours by cell brightness.
+    `layerMode` (falsy | {lo,hi}) keeps the background transparent, skips
+    empty cells, and stretches the band's luminance range to full scale so
+    dark layers still produce visible dots. */
+function applyHalftone(srcCtx, dstCtx, W, H, cell, contrast, palette, layerMode = false) {
+  const colors = palette.colors;
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+  if (layerMode) {
+    dstCtx.clearRect(0, 0, W, H);
+  } else {
+    dstCtx.fillStyle = rgbCss(colors[0]);        // darkest as the field
+    dstCtx.fillRect(0, 0, W, H);
+  }
+
+  const lo = layerMode ? layerMode.lo : 0;
+  const span = layerMode ? Math.max(1, layerMode.hi - layerMode.lo) : 255;
+
+  const rMax = cell * 0.62;
+  for (let cy = cell / 2; cy < H; cy += cell) {
+    for (let cx = cell / 2; cx < W; cx += cell) {
+      let lum = 0, alpha = 0, n = 0;
+      for (let sy = 0; sy < 2; sy++) for (let sx = 0; sx < 2; sx++) {
+        const px = clampi((cx + sx) | 0, 0, W - 1);
+        const py = clampi((cy + sy) | 0, 0, H - 1);
+        const i = (py * W + px) * 4;
+        lum += 0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2];
+        alpha += src[i + 3];
+        n++;
+      }
+      lum /= n; alpha /= n;
+      if (layerMode && alpha < 30) continue;       // empty layer cell
+      lum = clampi(((lum - lo) / span) * 255, 0, 255);   // band → full range
+      lum = clampi((lum - 128) * contrast + 128, 0, 255);
+      const r = (lum / 255) * rMax;
+      if (r < 0.4) continue;
+      // Ink from palette[1..N-1] (never the background colour).
+      dstCtx.fillStyle = rgbCss(paletteColorFor(colors, lum, colors.length > 1 ? 1 : 0));
+      dstCtx.beginPath();
+      dstCtx.arc(cx, cy, r, 0, Math.PI * 2);
+      dstCtx.fill();
+    }
+  }
+}
+
+/** 03 — ASCII raster. Background = darkest palette colour; glyph ink is
+    chosen from the lighter palette colours by cell brightness. `layerMode`
+    (falsy | {lo,hi}) keeps the background transparent, skips empty cells,
+    and stretches the band's luminance range so dark layers get glyphs. */
+function applyAscii(srcCtx, dstCtx, W, H, size, palette, layerMode = false) {
+  const colors = palette.colors;
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+  if (layerMode) dstCtx.clearRect(0, 0, W, H);
+  else { dstCtx.fillStyle = rgbCss(colors[0]); dstCtx.fillRect(0, 0, W, H); }
+  dstCtx.font = `700 ${size}px "IBM Plex Mono", monospace`;
+  dstCtx.textBaseline = 'top';
+
+  const lo = layerMode ? layerMode.lo : 0;
+  const span = layerMode ? Math.max(1, layerMode.hi - layerMode.lo) : 255;
+
+  const stepX = Math.max(3, size * 0.62);
+  const stepY = size;
+  const ramp = ASCII_RAMP, last = ramp.length - 1;
+
+  for (let y = 0; y < H; y += stepY) {
+    for (let x = 0; x < W; x += stepX) {
+      const px = clampi((x + stepX / 2) | 0, 0, W - 1);
+      const py = clampi((y + stepY / 2) | 0, 0, H - 1);
+      const i = (py * W + px) * 4;
+      if (layerMode && src[i + 3] < 30) continue;   // empty layer cell
+      let lum = 0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2];
+      lum = clampi(((lum - lo) / span) * 255, 0, 255);
+      const ch = ramp[last - Math.min(last, Math.round((lum / 255) * last))];
+      if (ch === ' ') continue;
+      dstCtx.fillStyle = rgbCss(paletteColorFor(colors, lum, colors.length > 1 ? 1 : 0));
+      dstCtx.fillText(ch, x, y);
+    }
+  }
+}
+
+/** 05 — NOISE MASK "tag sweep" (storyboard effect).
+    Segments the "selected shape" by luminance (dark or light target),
+    then overlays flickering dither blocks that trail UP the shape from
+    its base, following its silhouette. A thin spring-green contour
+    traces the mask edge, matching the storyboard's outline pass.
+
+    The overlay is non-destructive: the source frame is drawn first and
+    blocks are painted on top — "the dither being hidden and shown as
+    an overlay" via a time-seeded hash noise + a vertical sweep wave. */
+
+const NOISE_BLUE   = '#2F3BFF';   // storyboard's saturated tag blue
+const NOISE_BLUE2  = '#5560FF';   // lighter sub-block accent
+const NOISE_GREEN  = '#00FF9C';   // contour trace green
+
+/** Deterministic integer hash → 0..1. Same (x, y, t) always yields the
+    same value, so blocks flicker coherently instead of boiling. */
+function hash3(x, y, t) {
+  let n = (x * 374761393 + y * 668265263 + t * 2246822519) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+
+function applyNoiseMask(srcCtx, dstCtx, W, H, opts, layerMode = false) {
+  const { block, speed, density, thresh, target } = opts;
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+
+  // Overlay style: keep the underlying frame, paint blocks on top.
+  dstCtx.drawImage(srcCtx.canvas, 0, 0);
+
+  const cols = Math.ceil(W / block);
+  const rows = Math.ceil(H / block);
+
+  /* --- 1. Build the shape mask + find the base row per column ------
+     A cell belongs to the shape when its sampled luminance is below
+     (dark target) / above (light target) the threshold. The sweep is
+     measured from each column's own lowest shape cell, so the wave
+     genuinely "animates from the base of the hand", not the frame. */
+  const mask = new Uint8Array(cols * rows);
+  const base = new Int16Array(cols).fill(-1);   // lowest shape row per column
+  const top  = new Int16Array(cols).fill(-1);   // highest shape row per column
+
+  for (let r = 0; r < rows; r++) {
+    const py = clampi((r * block + block / 2) | 0, 0, H - 1);
+    for (let c = 0; c < cols; c++) {
+      const px = clampi((c * block + block / 2) | 0, 0, W - 1);
+      const i = (py * W + px) * 4;
+      const lum = 0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2];
+      const inShape = (target === 'dark' ? lum < thresh : lum > thresh)
+        && (!layerMode || src[i + 3] > 127);      // layer mode: opaque cells only
+      if (inShape) {
+        mask[r * cols + c] = 1;
+        if (r > base[c]) base[c] = r;           // remember deepest cell
+        if (top[c] === -1 || r < top[c]) top[c] = r;
+      }
+    }
+  }
+
+  /* --- 2. Sweep clock ----------------------------------------------
+     progress loops 0 → 1.15 (slight hold at the top before restart).
+     tStep reseeds the flicker hash a few times per second. */
+  const now = performance.now() / 1000;
+  const progress = (now * speed) % 1.15;
+  const tStep = Math.floor(now * 9);
+
+  /* --- 3. Paint blocks ---------------------------------------------
+     For each shape cell, its height fraction hN runs 0 at the column
+     base → 1 at the column top. Cells below the wavefront light up,
+     densest just behind the front so the effect visibly "trails up".
+     Density 0 skips block painting entirely — contour trace only. */
+  if (density > 0)
+  for (let c = 0; c < cols; c++) {
+    if (base[c] < 0) continue;
+    const span = Math.max(1, base[c] - top[c]);
+    for (let r = top[c]; r <= base[c]; r++) {
+      if (!mask[r * cols + c]) continue;
+      const hN = (base[c] - r) / span;          // 0 base → 1 top
+      if (hN > progress) continue;              // wavefront not here yet
+
+      // Intensity: hot band at the front, sparse tail behind it.
+      const behind = progress - hN;
+      const envelope = 0.25 + 0.75 * Math.exp(-behind * 5);
+      if (hash3(c, r, tStep) > density * envelope) continue;
+
+      const x = c * block, y = r * block;
+      const v = hash3(c * 7 + 3, r * 13 + 1, tStep);
+
+      if (v < 0.72) {
+        dstCtx.fillStyle = NOISE_BLUE;
+        dstCtx.fillRect(x, y, block, block);
+        // Occasional inner sub-block for the techy dither texture.
+        if (v < 0.3) {
+          dstCtx.fillStyle = NOISE_BLUE2;
+          dstCtx.fillRect(x + block / 2, y, block / 2, block / 2);
+        }
+      } else if (v < 0.9) {
+        // Half-height tick — reads like a broken scanline block.
+        dstCtx.fillStyle = NOISE_BLUE;
+        dstCtx.fillRect(x, y + block / 2, block, block / 2);
+      } else {
+        dstCtx.fillStyle = '#FFFFFF';
+        dstCtx.fillRect(x + block / 4, y + block / 4, block / 2, block / 2);
+      }
+    }
+  }
+
+  /* --- 4. Contour trace ---------------------------------------------
+     Any shape cell whose neighbor above or beside is outside the mask
+     is a silhouette edge — stroke it with a thin green line so the
+     overlay visibly "follows the shape of the object". */
+  dstCtx.fillStyle = NOISE_GREEN;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!mask[r * cols + c]) continue;
+      const up    = r > 0        ? mask[(r - 1) * cols + c] : 0;
+      const left  = c > 0        ? mask[r * cols + c - 1]   : 0;
+      const right = c < cols - 1 ? mask[r * cols + c + 1]   : 0;
+      if (up && left && right) continue;        // interior cell, skip
+      const x = c * block, y = r * block;
+      if (!up)    dstCtx.fillRect(x, y, block, 1);
+      if (!left)  dstCtx.fillRect(x, y, 1, block);
+      if (!right) dstCtx.fillRect(x + block - 1, y, 1, block);
+    }
+  }
+}
+
+/* ==============================================================
+   RENDER LOOP
+   ============================================================== */
+
+/** 06 — BLOCKS: chunky corrupted pixelation (blue-reference look).
+    The frame collapses into a hard grid of solid blocks snapped to the
+    nearest palette colour. `chaos` merges random cells into bigger
+    super-blocks and jitters them sideways, giving the broken-datamosh
+    structure rather than a clean mosaic. Deterministic per time step so
+    the chunks hold for a beat instead of boiling every frame. */
+function applyBlocks(srcCtx, dstCtx, W, H, opts, palette, layerMode = false) {
+  const { size, chaos } = opts;
+  const colors = palette.colors;
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+
+  if (layerMode) dstCtx.clearRect(0, 0, W, H);
+  else { dstCtx.fillStyle = rgbCss(colors[0]); dstCtx.fillRect(0, 0, W, H); }
+
+  const cols = Math.ceil(W / size);
+  const rows = Math.ceil(H / size);
+  const visited = new Uint8Array(cols * rows);
+  const tStep = Math.floor(performance.now() / 1000 * 6);   // ~6 re-rolls/sec
+
+  /** Nearest palette colour by RGB distance (not just luminance), so
+      colourful palettes snap sensibly. */
+  const snap = (r, g, b) => {
+    let best = colors[0], bd = Infinity;
+    for (const c of colors) {
+      const d = (r - c.r) * (r - c.r) + (g - c.g) * (g - c.g) + (b - c.b) * (b - c.b);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  };
+
+  for (let rI = 0; rI < rows; rI++) {
+    for (let cI = 0; cI < cols; cI++) {
+      if (visited[rI * cols + cI]) continue;
+
+      // Chaos occasionally merges this cell into a 2–4 wide super-block.
+      let span = 1;
+      const h = hash3(cI, rI, tStep);
+      if (h < chaos * 0.45) span = 2 + ((h * 997) | 0) % 3;
+      span = Math.min(span, cols - cI, rows - rI);
+
+      // Average colour + alpha over a sparse sample of the span.
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      const px0 = cI * size, py0 = rI * size, pxSpan = span * size;
+      for (let sy = 0; sy < 3; sy++) for (let sx = 0; sx < 3; sx++) {
+        const px = clampi(px0 + ((sx + 0.5) / 3 * pxSpan) | 0, 0, W - 1);
+        const py = clampi(py0 + ((sy + 0.5) / 3 * pxSpan) | 0, 0, H - 1);
+        const i = (py * W + px) * 4;
+        r += src[i]; g += src[i + 1]; b += src[i + 2]; a += src[i + 3]; n++;
+      }
+      r /= n; g /= n; b /= n; a /= n;
+
+      // Mark the whole span visited whether or not we paint it.
+      for (let vy = 0; vy < span; vy++) for (let vx = 0; vx < span; vx++)
+        visited[(rI + vy) * cols + (cI + vx)] = 1;
+
+      if (layerMode && a < 30) continue;          // empty layer region
+
+      // Chaos also slides some blocks sideways — broken scanline feel.
+      const h2 = hash3(cI * 5 + 1, rI * 3 + 7, tStep);
+      const jitter = (h2 < chaos * 0.3) ? Math.round((h2 * 8 - 1) * size * chaos) : 0;
+
+      dstCtx.fillStyle = rgbCss(snap(r, g, b));
+      dstCtx.fillRect(px0 + jitter, py0, span * size, span * size);
+    }
+  }
+}
+
+/* 07 — SHAPES: contour wireframes (red-reference look). */
+const SHAPE_COLORS = ['#FF2040', '#FF2040', '#FF00A8', '#FFFFFF'];  // red-weighted
+
+/** Scatters stroked rectangles, circles and crosses along detected
+    outlines. Edges come from a coarse luminance-gradient grid (alpha-
+    weighted, so layer silhouettes count as edges too). Placement is
+    hash-driven and re-rolls a few times per second, giving the slow
+    flicker of the reference frame. Overlay style: source stays visible. */
+function applyShapes(srcCtx, dstCtx, W, H, opts, layerMode = false) {
+  const { density, size, thresh } = opts;
+  const kinds = (opts.kinds && opts.kinds.length) ? opts.kinds : ['rect'];
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+
+  dstCtx.clearRect(0, 0, W, H);
+  dstCtx.drawImage(srcCtx.canvas, 0, 0);          // keep the image under it
+
+  // Coarse effective-luminance grid: lum × alpha so transparency edges
+  // register as contours in layer mode.
+  const cell = 8;
+  const gc = Math.ceil(W / cell), gr = Math.ceil(H / cell);
+  const L = new Float32Array(gc * gr);
+  for (let ry = 0; ry < gr; ry++) {
+    const py = clampi(ry * cell + (cell >> 1), 0, H - 1);
+    for (let rx = 0; rx < gc; rx++) {
+      const px = clampi(rx * cell + (cell >> 1), 0, W - 1);
+      const i = (py * W + px) * 4;
+      const lum = 0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2];
+      L[ry * gc + rx] = lum * (src[i + 3] / 255);
+    }
+  }
+
+  const tStep = Math.floor(performance.now() / 1000 * 3);   // slow re-roll
+  dstCtx.lineWidth = 1;
+  let placed = 0;   // running counter used by the even-cycle mode
+
+  for (let ry = 0; ry < gr - 1; ry++) {
+    for (let rx = 0; rx < gc - 1; rx++) {
+      const c = L[ry * gc + rx];
+      const grad = Math.max(Math.abs(c - L[ry * gc + rx + 1]),
+                            Math.abs(c - L[(ry + 1) * gc + rx]));
+      if (grad < thresh) continue;                 // not an outline cell
+      const h = hash3(rx, ry, tStep);
+      if (h > density * 0.55) continue;            // thin out placements
+
+      const cx = rx * cell + (cell >> 1);
+      const cy = ry * cell + (cell >> 1);
+      const v = hash3(rx * 13 + 5, ry * 7 + 11, tStep);
+      const s = 4 + v * size;                      // this shape's size
+      dstCtx.strokeStyle = SHAPE_COLORS[(v * SHAPE_COLORS.length) | 0];
+
+      // Pick which kind to draw: random (hash-driven) or an even cycle
+      // through the selected set.
+      const kind = opts.random
+        ? kinds[(v * kinds.length) | 0]
+        : kinds[placed % kinds.length];
+      placed++;
+
+      drawShape(dstCtx, kind, cx, cy, s, v);
+    }
+  }
+}
+
+/** Draw one wireframe shape of the given kind, centred at (cx, cy). */
+function drawShape(ctx, kind, cx, cy, s, v) {
+  const r = s / 2;
+  switch (kind) {
+    case 'rect':
+      ctx.strokeRect(cx - r, cy - r, s, s * (0.5 + v));
+      if (v < 0.18) ctx.strokeRect(cx - r + 3, cy - r + 3, s, s * (0.5 + v));  // doubled
+      break;
+    case 'circle':
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      break;
+    case 'cross':
+      ctx.beginPath();
+      ctx.moveTo(cx - s / 3, cy); ctx.lineTo(cx + s / 3, cy);
+      ctx.moveTo(cx, cy - s / 3); ctx.lineTo(cx, cy + s / 3);
+      ctx.stroke();
+      break;
+    case 'tri':
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy + r);
+      ctx.lineTo(cx - r, cy + r);
+      ctx.closePath(); ctx.stroke();
+      break;
+    case 'line': {
+      // A short segment angled by the shape's hash value.
+      const a = v * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(cx - Math.cos(a) * r, cy - Math.sin(a) * r);
+      ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      ctx.stroke();
+      break;
+    }
+    case 'hex': {
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = (Math.PI / 3) * k - Math.PI / 6;
+        const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
+        k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+}
+
+/* 08 — DEPTH MAP: heuristic monocular depth estimate.
+   No neural net in a single file, so depth is inferred from two strong
+   monocular cues: brightness (lit subjects read closer than dim
+   backgrounds) and ground-plane position (lower in frame = nearer),
+   mixed by the "ground bias" slider, then box-blurred for a smooth
+   field. The result is mapped through the active palette as a gradient,
+   near → light or near → dark. Computed on a coarse grid and upscaled
+   with smoothing so it stays realtime. */
+
+const depthGrid = document.createElement('canvas');
+const depthGridCtx = depthGrid.getContext('2d');
+
+/** Lerp along the palette colour list at t ∈ 0..1 (multi-stop gradient). */
+function paletteLerp(colors, t) {
+  const N = colors.length;
+  if (N === 1) return colors[0];
+  const p = clampi(t, 0, 1) * (N - 1);
+  const i = Math.min(N - 2, p | 0);
+  const f = p - i;
+  const a = colors[i], b = colors[i + 1];
+  return { r: a.r + (b.r - a.r) * f, g: a.g + (b.g - a.g) * f, b: a.b + (b.b - a.b) * f };
+}
+
+function applyDepth(srcCtx, dstCtx, W, H, opts, palette, layerMode = false) {
+  const { bias, smooth, near } = opts;
+  const colors = palette.colors;
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+
+  // Coarse depth field (cell = 4 px) — enough resolution, 16× fewer ops.
+  const cell = 4;
+  const gc = Math.ceil(W / cell), gr = Math.ceil(H / cell);
+  let D = new Float32Array(gc * gr);
+  const A = new Float32Array(gc * gr);
+
+  for (let ry = 0; ry < gr; ry++) {
+    const py = clampi(ry * cell + (cell >> 1), 0, H - 1);
+    const ground = gr > 1 ? ry / (gr - 1) : 0;      // 0 top → 1 bottom
+    for (let rx = 0; rx < gc; rx++) {
+      const px = clampi(rx * cell + (cell >> 1), 0, W - 1);
+      const i = (py * W + px) * 4;
+      const lum = (0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2]) / 255;
+      D[ry * gc + rx] = (1 - bias) * lum + bias * ground;   // nearness 0..1
+      A[ry * gc + rx] = src[i + 3];
+    }
+  }
+
+  // Separable box blur, `smooth` passes, for a coherent depth field.
+  for (let pass = 0; pass < smooth; pass++) {
+    const T = new Float32Array(gc * gr);
+    for (let ry = 0; ry < gr; ry++)
+      for (let rx = 0; rx < gc; rx++) {
+        let sum = 0, n = 0;
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = rx + dx;
+          if (x < 0 || x >= gc) continue;
+          sum += D[ry * gc + x]; n++;
+        }
+        T[ry * gc + rx] = sum / n;
+      }
+    for (let rx = 0; rx < gc; rx++)
+      for (let ry = 0; ry < gr; ry++) {
+        let sum = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const y = ry + dy;
+          if (y < 0 || y >= gr) continue;
+          sum += T[y * gc + rx]; n++;
+        }
+        D[ry * gc + rx] = sum / n;
+      }
+  }
+
+  // Paint the grid-resolution map, then upscale with smoothing.
+  if (depthGrid.width !== gc || depthGrid.height !== gr) {
+    depthGrid.width = gc; depthGrid.height = gr;
+  }
+  const img = depthGridCtx.createImageData(gc, gr);
+  const d = img.data;
+  for (let k = 0; k < gc * gr; k++) {
+    // near='light' → nearest maps to the palette's lightest colour.
+    const t = near === 'light' ? D[k] : 1 - D[k];
+    const c = paletteLerp(colors, t);
+    const p = k * 4;
+    d[p] = c.r; d[p + 1] = c.g; d[p + 2] = c.b;
+    d[p + 3] = layerMode ? (A[k] > 30 ? 255 : 0) : 255;
+  }
+  depthGridCtx.putImageData(img, 0, 0);
+
+  dstCtx.clearRect(0, 0, W, H);
+  const wasSmooth = dstCtx.imageSmoothingEnabled;
+  dstCtx.imageSmoothingEnabled = true;              // soft gradient upscale
+  dstCtx.drawImage(depthGrid, 0, 0, W, H);
+  dstCtx.imageSmoothingEnabled = wasSmooth;
+}
+
+/* 09 — CONTOUR: topographic surface lines (brain-scan reference).
+   Slices the subject's brightness into N evenly-spaced elevation levels
+   and draws a line wherever brightness crosses a level boundary — so the
+   lines run ACROSS the surface following its interior detail (like a
+   topographic map), rather than radiating out from the silhouette. Each
+   line is coloured by its elevation from the user's ring-colour list.
+   A pulse shifts the level phase (lines drift/breathe) and thickens them
+   at the peak. Overlay style: the source stays visible underneath. */
+
+function applyContour(srcCtx, dstCtx, W, H, opts, palette, layerMode = false) {
+  const { rings, weight, fill, pulse, depth } = opts;
+  const cols = (opts.colors && opts.colors.length) ? opts.colors : [{ r: 40, g: 90, b: 255 }];
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+
+  dstCtx.clearRect(0, 0, W, H);
+  dstCtx.drawImage(srcCtx.canvas, 0, 0);            // keep the image under
+
+  // Pulse breath 0..1 — drifts the elevation phase and fattens lines.
+  const now = performance.now() / 1000;
+  const breath = pulse > 0 ? (0.5 - 0.5 * Math.cos(now * pulse * Math.PI * 2)) : 0;
+
+  const levels = Math.max(2, rings | 0);
+  const bandsF = 255 / levels;                       // luminance per band
+  const phase = breath * bandsF;                     // pulse drifts levels
+  const lineHalf = (weight * 0.5) * (1 + depth * 1.2 * breath);   // half-thickness in luma units
+
+  // Precompute alpha-weighted luminance for every pixel (one pass).
+  const lumBuf = new Float32Array(W * H);
+  const aBuf = new Uint8ClampedArray(W * H);
+  for (let p = 0, i = 0; p < W * H; p++, i += 4) {
+    const a = src[i + 3];
+    lumBuf[p] = (0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2]) * (a / 255);
+    aBuf[p] = a;
+  }
+
+  const out = dstCtx.getImageData(0, 0, W, H);
+  const o = out.data;
+
+  /** Which elevation band a luminance sits in (after pulse phase). */
+  const bandOf = (l) => (l + phase) / bandsF;
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const p = y * W + x;
+      const a = aBuf[p];
+      if (a < 12) continue;                          // outside the subject
+      const l = lumBuf[p];
+      if (l < 2) continue;                           // skip near-black
+
+      // Distance (in luma units) to the nearest level boundary. A pixel
+      // is ON a contour line when it sits within lineHalf of a boundary.
+      const b = bandOf(l);
+      const frac = b - Math.floor(b);                // 0..1 within the band
+      const distToLine = Math.min(frac, 1 - frac) * bandsF;   // luma units to nearest boundary
+
+      const bandIndex = Math.floor(b);
+      const col = cols[((bandIndex % cols.length) + cols.length) % cols.length];
+
+      const i = p * 4;
+      if (distToLine <= lineHalf) {
+        // On a line: soft edge, brighter toward the centre of the stroke.
+        const soft = 1 - distToLine / (lineHalf + 0.001);
+        const aa = clampi(soft * (0.7 + 0.3 * breath), 0, 1);
+        o[i]     = clampi(o[i]     * (1 - aa) + col.r * aa + col.r * aa * 0.25, 0, 255);
+        o[i + 1] = clampi(o[i + 1] * (1 - aa) + col.g * aa + col.g * aa * 0.25, 0, 255);
+        o[i + 2] = clampi(o[i + 2] * (1 - aa) + col.b * aa + col.b * aa * 0.25, 0, 255);
+        o[i + 3] = Math.max(o[i + 3], (aa * 255) | 0);
+      } else if (fill > 0) {
+        // Between lines: a dim tint of the band colour for the filled look.
+        const aa = fill * 0.5;
+        o[i]     = clampi(o[i]     * (1 - aa) + col.r * aa, 0, 255);
+        o[i + 1] = clampi(o[i + 1] * (1 - aa) + col.g * aa, 0, 255);
+        o[i + 2] = clampi(o[i + 2] * (1 - aa) + col.b * aa, 0, 255);
+        if (layerMode) o[i + 3] = Math.max(o[i + 3], (aa * 255) | 0);
+      }
+    }
+  }
+  dstCtx.putImageData(out, 0, 0);
+}
+
+/* 10 — CRT: scanlines + phosphor shadow mask + barrel curvature +
+   rolling flicker. Samples the source through a barrel-distorted lookup
+   (screen bulge), darkens alternating scanlines, tints RGB sub-pixel
+   columns for the aperture-grille phosphor look, adds a slow rolling
+   brightness band, and vignettes the corners. */
+function applyCRT(srcCtx, dstCtx, W, H, opts, layerMode = false) {
+  const { scan, mask, curve, flicker } = opts;
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+  const out = dstCtx.createImageData(W, H);
+  const o = out.data;
+
+  const cx = W / 2, cy = H / 2;
+  const maxR2 = cx * cx + cy * cy;
+  const now = performance.now() / 1000;
+  // Rolling scan band + global flicker.
+  const roll = ((now * 0.35) % 1) * H;
+  const flick = 1 - flicker * 0.5 * (0.5 + 0.5 * Math.sin(now * 47));
+
+  for (let y = 0; y < H; y++) {
+    // Scanline darkening (every other line dips).
+    const sl = 1 - scan * (0.5 + 0.5 * Math.cos(y * Math.PI));
+    for (let x = 0; x < W; x++) {
+      // Barrel distortion: pull sample coords toward centre by r².
+      let sx = x, sy = y;
+      if (curve > 0) {
+        const nx = (x - cx) / cx, ny = (y - cy) / cy;
+        const r2 = nx * nx + ny * ny;
+        const k = 1 + curve * 0.18 * r2;
+        sx = cx + (x - cx) * k;
+        sy = cy + (y - cy) * k;
+        if (sx < 0 || sx >= W || sy < 0 || sy >= H) {
+          const i = (y * W + x) * 4;
+          o[i] = o[i + 1] = o[i + 2] = 0; o[i + 3] = layerMode ? 0 : 255;
+          continue;                                 // black beyond the tube edge
+        }
+      }
+      const si = ((sy | 0) * W + (sx | 0)) * 4;
+      const di = (y * W + x) * 4;
+
+      // Phosphor shadow mask: cycle emphasis across R/G/B by column.
+      const ph = x % 3;
+      const mr = 1 - mask * (ph === 0 ? 0 : 0.45);
+      const mg = 1 - mask * (ph === 1 ? 0 : 0.45);
+      const mb = 1 - mask * (ph === 2 ? 0 : 0.45);
+
+      // Rolling bright band.
+      const dRoll = Math.abs(y - roll);
+      const band = 1 + 0.12 * Math.max(0, 1 - dRoll / (H * 0.15));
+
+      // Vignette.
+      const vnx = x - cx, vny = y - cy;
+      const vig = 1 - 0.35 * ((vnx * vnx + vny * vny) / maxR2);
+
+      const g = sl * flick * band * vig;
+      o[di]     = clampi(src[si]     * mr * g, 0, 255);
+      o[di + 1] = clampi(src[si + 1] * mg * g, 0, 255);
+      o[di + 2] = clampi(src[si + 2] * mb * g, 0, 255);
+      o[di + 3] = layerMode ? src[si + 3] : 255;
+    }
+  }
+  dstCtx.putImageData(out, 0, 0);
+}
+
+/* 11 — STRETCH: pixel smear from a seed line (datamosh scan-drag).
+   Everything past the seed line, in the chosen direction, is replaced by
+   the seed line's pixels stretched across the gap — the classic "pull the
+   last good scanline" glitch. `amount` sets how far the smear reaches;
+   `jitter` gives the smear edge a ragged, animated boundary. */
+function applyStretch(srcCtx, dstCtx, W, H, opts, layerMode = false) {
+  const { dir, pos, amount, jitter } = opts;
+  const src = srcCtx.getImageData(0, 0, W, H);
+  const s = src.data;
+  const out = dstCtx.createImageData(W, H);
+  const o = out.data;
+  o.set(s);                                          // start from a copy
+
+  const now = performance.now();
+  const horizontal = dir === 'left' || dir === 'right';
+
+  if (!horizontal) {
+    // Vertical smear: each column copies the seed row downward/upward.
+    const seedY = clampi(Math.round(pos * (H - 1)), 0, H - 1);
+    const reach = amount * H;
+    for (let x = 0; x < W; x++) {
+      // Ragged edge: per-column jittered reach.
+      const j = jitter > 0 ? (hash3(x, 0, (now / 60) | 0) - 0.5) * jitter * H * 0.5 : 0;
+      const far = reach + j;
+      const seedI = (seedY * W + x) * 4;
+      const r = s[seedI], g = s[seedI + 1], b = s[seedI + 2], a = s[seedI + 3];
+      if (dir === 'down') {
+        for (let y = seedY + 1; y < Math.min(H, seedY + far); y++) {
+          const i = (y * W + x) * 4; o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = a;
+        }
+      } else { // up
+        for (let y = seedY - 1; y > Math.max(-1, seedY - far); y--) {
+          const i = (y * W + x) * 4; o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = a;
+        }
+      }
+    }
+  } else {
+    // Horizontal smear: each row copies the seed column left/right.
+    const seedX = clampi(Math.round(pos * (W - 1)), 0, W - 1);
+    const reach = amount * W;
+    for (let y = 0; y < H; y++) {
+      const j = jitter > 0 ? (hash3(0, y, (now / 60) | 0) - 0.5) * jitter * W * 0.5 : 0;
+      const far = reach + j;
+      const seedI = (y * W + seedX) * 4;
+      const r = s[seedI], g = s[seedI + 1], b = s[seedI + 2], a = s[seedI + 3];
+      if (dir === 'right') {
+        for (let x = seedX + 1; x < Math.min(W, seedX + far); x++) {
+          const i = (y * W + x) * 4; o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = a;
+        }
+      } else { // left
+        for (let x = seedX - 1; x > Math.max(-1, seedX - far); x--) {
+          const i = (y * W + x) * 4; o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = a;
+        }
+      }
+    }
+  }
+  dstCtx.putImageData(out, 0, 0);
+}
+
+/** Background key → alpha. Sets alpha to 0 for "background" pixels so
+    the exported PNG/WebM carries transparency. `target` picks which
+    luminance pole is background; `feather` softens the alpha edge. */
+function applyBgKey(ctx, W, H, opts) {
+  const { target, thresh, feather } = opts;
+  const img = ctx.getImageData(0, 0, W, H);
+  const d = img.data;
+  const f = Math.max(1, feather);
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    // Signed distance from the key threshold, oriented by target.
+    const dist = target === 'dark' ? (lum - thresh) : (thresh - lum);
+    // dist <= 0 → fully background (alpha 0); dist >= f → fully kept.
+    let a = dist <= 0 ? 0 : (dist >= f ? 255 : Math.round((dist / f) * 255));
+    d[i + 3] = a;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/** Dispatch a single pipeline stage by key. Returns the ctx that now
+    holds the result: `cur` for in-place / skipped stages, `other` when
+    the stage wrote into the scratch buffer (signalling a swap upstream).
+    This indirection is what makes the pipeline reorderable. */
+function runEffect(name, cur, other, W, H, pal, fx) {
+  switch (name) {
+    case 'aberr':
+      if (fx.aberr.on && (fx.aberr.offset > 0 || fx.aberr.glitch > 0)) {
+        applyAberration(cur, other, W, H, fx.aberr.offset, fx.aberr.glitch);
+        return other;
+      }
+      return cur;
+
+    case 'noise':
+      if (fx.noise.on) {
+        applyNoiseMask(cur, other, W, H, fx.noise);
+        return other;
+      }
+      return cur;
+
+    case 'dither':
+      if (fx.dither.on) applyDither(cur, W, H, fx.dither.scale, pal);  // in place
+      return cur;
+
+    case 'halftone':
+      if (fx.halftone.on) {
+        applyHalftone(cur, other, W, H, fx.halftone.scale, fx.halftone.contrast, pal);
+        return other;
+      }
+      return cur;
+
+    case 'ascii':
+      if (fx.ascii.on) {
+        applyAscii(cur, other, W, H, fx.ascii.size, pal);
+        return other;
+      }
+      return cur;
+
+    case 'blocks':
+      if (fx.blocks.on) {
+        applyBlocks(cur, other, W, H, fx.blocks, pal);
+        return other;
+      }
+      return cur;
+
+    case 'shapes':
+      if (fx.shapes.on) {
+        applyShapes(cur, other, W, H, fx.shapes);
+        return other;
+      }
+      return cur;
+
+    case 'depth':
+      if (fx.depth.on) {
+        applyDepth(cur, other, W, H, fx.depth, pal);
+        return other;
+      }
+      return cur;
+
+    case 'contour':
+      // On 3D models the slice shader draws the contours in 3D space, so
+      // the 2D brightness pass is skipped (it splotches on uniform
+      // surfaces). 2D media still uses the brightness elevation bands.
+      if (fx.contour.on && state.mediaType !== 'model') {
+        applyContour(cur, other, W, H, fx.contour, pal);
+        return other;
+      }
+      return cur;
+
+    case 'crt':
+      if (fx.crt.on) {
+        applyCRT(cur, other, W, H, fx.crt);
+        return other;
+      }
+      return cur;
+
+    case 'stretch':
+      if (fx.stretch.on) {
+        applyStretch(cur, other, W, H, fx.stretch);
+        return other;
+      }
+      return cur;
+
+    case 'layers':
+      if (state.layers.on) {
+        applyLayerSplit(cur, other, W, H);
+        return other;
+      }
+      return cur;
+  }
+  return cur;
+}
+
+/* ==============================================================
+   AUTO LAYER SPLIT
+   Segments the rasterized frame into luminance bands and routes each
+   band through one assigned effect (in layer mode: alpha-aware,
+   transparent background), then recomposites dark → light back into
+   bufA so the global stage stack continues on the result.
+   ============================================================== */
+
+/* Lazy pools so layer buffers exist only when the feature is used and
+   track the current pipeline resolution. */
+const layerPool = [];                          // one canvas per band
+const layerScratch = document.createElement('canvas');
+const layerScratchCtx = layerScratch.getContext('2d', { willReadFrequently: true });
+
+function getLayerCtx(k, W, H) {
+  if (!layerPool[k]) {
+    const c = document.createElement('canvas');
+    layerPool[k] = { canvas: c, ctx: c.getContext('2d', { willReadFrequently: true }) };
+  }
+  const e = layerPool[k];
+  if (e.canvas.width !== W || e.canvas.height !== H) { e.canvas.width = W; e.canvas.height = H; }
+  return e.ctx;
+}
+
+/** Run one effect on a layer buffer in layer mode. `band` = {lo,hi}
+    luminance range, used by brightness-driven effects for normalization.
+    Uses each effect's live panel params (so keyframes animate layers too). */
+function runLayerEffect(name, cur, other, W, H, band) {
+  const fx = state.fx, pal = state.palette;
+  switch (name) {
+    case 'dither':   applyDither(cur, W, H, fx.dither.scale, pal, true); return cur;
+    case 'halftone': applyHalftone(cur, other, W, H, fx.halftone.scale, fx.halftone.contrast, pal, band); return other;
+    case 'ascii':    applyAscii(cur, other, W, H, fx.ascii.size, pal, band); return other;
+    case 'aberr':    applyAberration(cur, other, W, H, fx.aberr.offset, fx.aberr.glitch, true); return other;
+    case 'noise':    applyNoiseMask(cur, other, W, H, fx.noise, true); return other;
+    case 'blocks':   applyBlocks(cur, other, W, H, fx.blocks, pal, true); return other;
+    case 'shapes':   applyShapes(cur, other, W, H, fx.shapes, true); return other;
+    case 'depth':    applyDepth(cur, other, W, H, fx.depth, pal, true); return other;
+    case 'contour':  applyContour(cur, other, W, H, fx.contour, pal, true); return other;
+    case 'crt':      applyCRT(cur, other, W, H, fx.crt, true); return other;
+    case 'stretch':  applyStretch(cur, other, W, H, fx.stretch, true); return other;
+  }
+  return cur;
+}
+
+/** Split bufA into bands, process each, recomposite back into bufA. */
+const bandImgPool = [];   // reused ImageData per band (avoids GC churn)
+
+/* Private composite target for the layer stage, kept separate from the
+   ping-pong buffers so it can be dropped anywhere in the pipeline. */
+const layerOut = document.createElement('canvas');
+const layerOutCtx = layerOut.getContext('2d', { willReadFrequently: true });
+
+/** Layer-split as a normal pipeline stage: reads `srcCtx`, splits into
+    luminance bands, processes each through its assigned effect, and
+    composites the result into `dstCtx`. Returns dstCtx. */
+function applyLayerSplit(srcCtx, dstCtx, W, H) {
+  const n = state.layers.count;
+  const src = srcCtx.getImageData(0, 0, W, H);
+  const s = src.data;
+
+  // Reuse pooled ImageDatas; reallocate only when the size changes.
+  for (let k = 0; k < n; k++) {
+    if (!bandImgPool[k] || bandImgPool[k].width !== W || bandImgPool[k].height !== H) {
+      bandImgPool[k] = new ImageData(W, H);
+    } else {
+      bandImgPool[k].data.fill(0);              // clear last frame's pixels
+    }
+  }
+  const imgs = bandImgPool;
+
+  // Distribute pixels into per-band ImageDatas by luminance.
+  for (let p = 0; p < s.length; p += 4) {
+    const lum = 0.2126 * s[p] + 0.7152 * s[p + 1] + 0.0722 * s[p + 2];
+    const k = Math.min(n - 1, (lum / 255 * n) | 0);
+    const d = imgs[k].data;
+    d[p] = s[p]; d[p + 1] = s[p + 1]; d[p + 2] = s[p + 2]; d[p + 3] = s[p + 3];
+  }
+
+  if (layerScratch.width !== W || layerScratch.height !== H) {
+    layerScratch.width = W; layerScratch.height = H;
+  }
+  if (layerOut.width !== W || layerOut.height !== H) {
+    layerOut.width = W; layerOut.height = H;
+  }
+
+  // Process + stack into the private buffer, darkest band first so light
+  // layers sit on top.
+  layerOutCtx.clearRect(0, 0, W, H);
+  for (let k = 0; k < n; k++) {
+    const lctx = getLayerCtx(k, W, H);
+    lctx.clearRect(0, 0, W, H);
+    lctx.putImageData(imgs[k], 0, 0);
+    const eff = state.layers.assign[k] || 'none';
+    const band = { lo: 255 * k / n, hi: 255 * (k + 1) / n };
+    const res = eff === 'none' ? lctx : runLayerEffect(eff, lctx, layerScratchCtx, W, H, band);
+    layerOutCtx.drawImage(res.canvas, 0, 0);
+  }
+
+  // Blit the private composite into the requested destination buffer.
+  dstCtx.clearRect(0, 0, W, H);
+  dstCtx.drawImage(layerOut, 0, 0);
+  return dstCtx;
+}
+
+function currentSource() {
+  switch (state.mediaType) {
+    case 'video': return state.video;
+    case 'image': return state.image;
+    case 'gif':   return gifCanvas;
+    case 'model': return threeCanvas;
+    default:      return null;
+  }
+}
+
+/** Run the full effects pipeline once on the current source at whatever
+    size the pipeline canvases are set to, and blit to the display. Split
+    out from the rAF loop so recording and PNG export can drive it at a
+    higher resolution on demand. */
+function composite() {
+  const src = currentSource();
+  if (!src || !state.W) return;
+
+  const { W, H } = state;
+  const fx = state.fx;
+  const pal = state.palette;
+
+  // 3D source: spin the model, refresh the feedback texture, render.
+  if (state.mediaType === 'model') updateModel3D();
+
+  // Stage 0: rasterize the source at processing resolution.
+  ctxA.drawImage(src, 0, 0, W, H);
+
+  // Ping-pong between bufA and bufB, walking the user-defined order.
+  // runEffect() returns the ctx holding its result; if that's `other`,
+  // a write happened and we swap so `cur` always points at the latest.
+  let cur = ctxA, other = ctxB;
+  for (const name of state.order) {
+    const res = runEffect(name, cur, other, W, H, pal, fx);
+    if (res === other) { const t = cur; cur = other; other = t; }
+  }
+
+  // Optional background key: punch alpha into the final buffer so the
+  // exported canvas is transparent where the background was.
+  if (state.bgKey.on) applyBgKey(cur, W, H, state.bgKey);
+
+  // Final blit to the visible canvas (also feeds captureStream / PNG).
+  // clearRect first so transparency isn't painted over a stale frame.
+  dCtx.clearRect(0, 0, W, H);
+  dCtx.drawImage(cur.canvas, 0, 0);
+}
+
+function renderFrame() {
+  state.rafId = requestAnimationFrame(renderFrame);
+
+  // Advance the animation clock and push keyframed values into fx params
+  // every frame, even with no media loaded (so scrubbing previews live).
+  tickAnim();
+  evalKeyframes();
+
+  // Skip compositing while a synchronous PNG grab owns the pipeline size.
+  if (state.busyExport) return;
+
+  composite();
+
+  // Transport readout (skip while the user drags the seek thumb).
+  if (state.mediaType === 'video' && !state.seeking) updateTimecode();
+  else if (state.mediaType === 'gif') updateTransportUI();   // live frame counter
+}
+
+/* ==============================================================
+   TRANSPORT (play / pause / mute / seek)
+   ============================================================== */
+
+function fmt(t) {
+  if (!isFinite(t)) t = 0;
+  const m = Math.floor(t / 60), s = t % 60;
+  return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+function updateTimecode() {
+  const v = state.video;
+  timecode.textContent = `${fmt(v.currentTime)} / ${fmt(v.duration)}`;
+  seekBar.value = v.duration ? Math.round((v.currentTime / v.duration) * 1000) : 0;
+}
+
+function updateTransportUI() {
+  if (state.mediaType === 'video') {
+    btnPlay.textContent = state.video.paused ? '►' : '❚❚';
+    btnMute.classList.toggle('text-mag', state.video.muted);
+    btnMute.textContent = state.video.muted ? 'MUT' : 'SND';
+  } else if (state.mediaType === 'gif') {
+    btnPlay.textContent = state.gif.playing ? '❚❚' : '►';
+    timecode.textContent = `GIF ${String(state.gif.index).padStart(3, '0')}/${String(state.gif.frameCount).padStart(3, '0')}`;
+  }
+}
+
+btnPlay.addEventListener('click', () => {
+  if (state.mediaType === 'video') {
+    state.video.paused ? state.video.play() : state.video.pause();
+  } else if (state.mediaType === 'gif') {
+    state.gif.playing = !state.gif.playing;
+  }
+  updateTransportUI();
+});
+
+btnMute.addEventListener('click', () => {
+  if (state.mediaType !== 'video') return;
+  state.video.muted = !state.video.muted;
+  updateTransportUI();
+});
+
+seekBar.addEventListener('input', () => {
+  if (state.mediaType !== 'video') return;
+  state.seeking = true;
+  const v = state.video;
+  if (v.duration) v.currentTime = (seekBar.value / 1000) * v.duration;
+  timecode.textContent = `${fmt(v.currentTime)} / ${fmt(v.duration)}`;
+});
+seekBar.addEventListener('change', () => { state.seeking = false; });
+
+/* ==============================================================
+   UPLOAD: drag & drop + file picker
+   ============================================================== */
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+  fileInput.value = ''; // allow re-selecting the same file
+});
+
+/* Whole workspace is a drop target, even after media is loaded,
+   so a new file can be swapped in at any time. */
+['dragenter', 'dragover'].forEach((ev) =>
+  workspace.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dropzone.classList.add('drag-over');
+  })
+);
+['dragleave', 'drop'].forEach((ev) =>
+  workspace.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+  })
+);
+workspace.addEventListener('drop', (e) => {
+  const file = e.dataTransfer?.files?.[0];
+  if (file) loadFile(file);
+});
+
+/* ==============================================================
+   PIPELINE REORDERING
+   Users can drag stages by the grip, or nudge with ▲/▼. Either way
+   we move the <section> node inside #fx-list, then rebuild state.order
+   from DOM order and renumber the 01..05 badges.
+   ============================================================== */
+
+const fxList = $('fx-list');
+
+/** Read DOM order → state.order, and repaint the stage numbers so the
+    badge always reflects the actual processing position. */
+function syncOrderFromDOM() {
+  const stages = [...fxList.querySelectorAll('.fx-stage')];
+  state.order = stages.map((s) => s.dataset.fx);
+  stages.forEach((s, i) => {
+    const badge = s.querySelector('.stage-num');
+    if (badge) badge.textContent = String(i + 1).padStart(2, '0');
+  });
+  $('status-order').textContent = 'ORD ' + state.order.map((k) => k[0].toUpperCase()).join('·');
+}
+
+/* ---- ▲ / ▼ nudge buttons ---- */
+fxList.addEventListener('click', (e) => {
+  const up = e.target.closest('.fx-up');
+  const down = e.target.closest('.fx-down');
+  if (!up && !down) return;
+  const section = e.target.closest('.fx-stage');
+  if (up && section.previousElementSibling) {
+    fxList.insertBefore(section, section.previousElementSibling);
+    syncOrderFromDOM();
+  } else if (down && section.nextElementSibling) {
+    fxList.insertBefore(section.nextElementSibling, section);
+    syncOrderFromDOM();
+  }
+});
+
+/* ---- Drag & drop reordering ----
+   Sections are only made draggable while the grip is pressed, so the
+   sliders and checkboxes inside them keep working normally. */
+let draggingEl = null;
+
+fxList.querySelectorAll('.fx-grip').forEach((grip) => {
+  const section = grip.closest('.fx-stage');
+  // Arm dragging on grip press; disarm once the drag ends or is aborted.
+  grip.addEventListener('mousedown',  () => { section.setAttribute('draggable', 'true'); });
+  grip.addEventListener('touchstart', () => { section.setAttribute('draggable', 'true'); }, { passive: true });
+});
+
+fxList.addEventListener('dragstart', (e) => {
+  const section = e.target.closest('.fx-stage');
+  if (!section) return;
+  draggingEl = section;
+  section.style.opacity = '0.4';
+  e.dataTransfer.effectAllowed = 'move';
+  // Some browsers need data set for a drag to actually begin.
+  try { e.dataTransfer.setData('text/plain', section.dataset.fx); } catch (_) {}
+});
+
+fxList.addEventListener('dragover', (e) => {
+  if (!draggingEl) return;
+  e.preventDefault();                    // allow drop
+  e.dataTransfer.dropEffect = 'move';
+  const after = sectionAfterPoint(e.clientY);
+  if (after == null) fxList.appendChild(draggingEl);
+  else if (after !== draggingEl) fxList.insertBefore(draggingEl, after);
+  // Repaint badges live so numbering tracks the drop position in realtime.
+  [...fxList.querySelectorAll('.fx-stage')].forEach((s, i) => {
+    const b = s.querySelector('.stage-num');
+    if (b) b.textContent = String(i + 1).padStart(2, '0');
+  });
+});
+
+fxList.addEventListener('drop', (e) => { e.preventDefault(); });
+
+fxList.addEventListener('dragend', () => {
+  if (!draggingEl) return;
+  draggingEl.style.opacity = '';
+  draggingEl.removeAttribute('draggable');
+  draggingEl = null;
+  syncOrderFromDOM();
+});
+
+/** Return the first stage whose vertical midpoint is below the cursor,
+    i.e. the element the dragged item should be inserted *before*. */
+function sectionAfterPoint(y) {
+  const others = [...fxList.querySelectorAll('.fx-stage:not([style*="opacity"])')];
+  for (const el of others) {
+    const box = el.getBoundingClientRect();
+    if (y < box.top + box.height / 2) return el;
+  }
+  return null;
+}
+
+/* ==============================================================
+   SIDEBAR CONTROL WIRING
+   ============================================================== */
+
+function setStatus(msg, alert = false) {
+  const el = $('status-line');
+  el.textContent = msg;
+  el.classList.toggle('text-mag', alert);
+  el.classList.toggle('text-acid', !alert);
+}
+
+function updateFxCount() {
+  const n = Object.values(state.fx).filter((f) => f.on).length;
+  $('status-fx').textContent = `FX ${n}/${Object.keys(state.fx).length}`;
+}
+
+/** Bind a checkbox to fx[key].on */
+function bindToggle(id, key) {
+  $(id).addEventListener('change', (e) => {
+    state.fx[key].on = e.target.checked;
+    updateFxCount();
+  });
+}
+bindToggle('fx-dither', 'dither');
+bindToggle('fx-halftone', 'halftone');
+bindToggle('fx-ascii', 'ascii');
+bindToggle('fx-aberr', 'aberr');
+bindToggle('fx-noise', 'noise');
+bindToggle('fx-blocks', 'blocks');
+bindToggle('fx-shapes', 'shapes');
+bindToggle('fx-depth', 'depth');
+bindToggle('fx-contour', 'contour');
+bindToggle('fx-crt', 'crt');
+bindToggle('fx-stretch', 'stretch');
+
+/* ==============================================================
+   ANIMATABLE PARAMETERS + KEYFRAME ENGINE
+   ============================================================== */
+
+/* Single source of truth for every keyframeable slider. `label` names
+   the track in the timeline; `fmt` renders the readout. */
+const PARAM_DEFS = [
+  { key: 'dither.scale',     fx: 'dither',   prop: 'scale',    slider: 'dither-scale',     val: 'dither-scale-val',     label: 'Dither scale',    fmt: (v) => `${Math.round(v)} px` },
+  { key: 'halftone.scale',   fx: 'halftone', prop: 'scale',    slider: 'halftone-scale',   val: 'halftone-scale-val',   label: 'Halftone dot',    fmt: (v) => `${Math.round(v)} px` },
+  { key: 'halftone.contrast',fx: 'halftone', prop: 'contrast', slider: 'halftone-contrast',val: 'halftone-contrast-val',label: 'Halftone ctr',    fmt: (v) => `${v.toFixed(1)}×` },
+  { key: 'ascii.size',       fx: 'ascii',    prop: 'size',     slider: 'ascii-size',       val: 'ascii-size-val',       label: 'ASCII size',      fmt: (v) => `${Math.round(v)} px` },
+  { key: 'aberr.offset',     fx: 'aberr',    prop: 'offset',   slider: 'aberr-offset',     val: 'aberr-offset-val',     label: 'RGB offset',      fmt: (v) => `${Math.round(v)} px` },
+  { key: 'aberr.glitch',     fx: 'aberr',    prop: 'glitch',   slider: 'glitch-int',       val: 'glitch-int-val',       label: 'Glitch',          fmt: (v) => v.toFixed(2) },
+  { key: 'noise.thresh',     fx: 'noise',    prop: 'thresh',   slider: 'noise-thresh',     val: 'noise-thresh-val',     label: 'Mask thresh',     fmt: (v) => `${Math.round(v)}` },
+  { key: 'noise.block',      fx: 'noise',    prop: 'block',    slider: 'noise-block',      val: 'noise-block-val',      label: 'Block size',      fmt: (v) => `${Math.round(v)} px` },
+  { key: 'noise.speed',      fx: 'noise',    prop: 'speed',    slider: 'noise-speed',      val: 'noise-speed-val',      label: 'Sweep speed',     fmt: (v) => v.toFixed(2) },
+  { key: 'noise.density',    fx: 'noise',    prop: 'density',  slider: 'noise-density',    val: 'noise-density-val',    label: 'Noise density',   fmt: (v) => v.toFixed(2) },
+  { key: 'blocks.size',      fx: 'blocks',   prop: 'size',     slider: 'blocks-size',      val: 'blocks-size-val',      label: 'Blocks size',     fmt: (v) => `${Math.round(v)} px` },
+  { key: 'blocks.chaos',     fx: 'blocks',   prop: 'chaos',    slider: 'blocks-chaos',     val: 'blocks-chaos-val',     label: 'Chunk chaos',     fmt: (v) => v.toFixed(2) },
+  { key: 'shapes.density',   fx: 'shapes',   prop: 'density',  slider: 'shapes-density',   val: 'shapes-density-val',   label: 'Shape density',   fmt: (v) => v.toFixed(2) },
+  { key: 'shapes.size',      fx: 'shapes',   prop: 'size',     slider: 'shapes-size',      val: 'shapes-size-val',      label: 'Shape size',      fmt: (v) => `${Math.round(v)} px` },
+  { key: 'shapes.thresh',    fx: 'shapes',   prop: 'thresh',   slider: 'shapes-thresh',    val: 'shapes-thresh-val',    label: 'Edge thresh',     fmt: (v) => `${Math.round(v)}` },
+  { key: 'depth.bias',       fx: 'depth',    prop: 'bias',     slider: 'depth-bias',       val: 'depth-bias-val',       label: 'Ground bias',     fmt: (v) => v.toFixed(2) },
+  { key: 'depth.smooth',     fx: 'depth',    prop: 'smooth',   slider: 'depth-smooth',     val: 'depth-smooth-val',     label: 'Depth smooth',    fmt: (v) => `${Math.round(v)}` },
+  { key: 'contour.rings',    fx: 'contour',  prop: 'rings',    slider: 'contour-rings',    val: 'contour-rings-val',    label: 'Contour levels',  fmt: (v) => `${Math.round(v)}` },
+  { key: 'contour.weight',   fx: 'contour',  prop: 'weight',   slider: 'contour-thresh',   val: 'contour-thresh-val',   label: 'Line weight',     fmt: (v) => v.toFixed(1) },
+  { key: 'contour.fill',     fx: 'contour',  prop: 'fill',     slider: 'contour-spacing',  val: 'contour-spacing-val',  label: 'Fill opacity',    fmt: (v) => v.toFixed(2) },
+  { key: 'contour.pulse',    fx: 'contour',  prop: 'pulse',    slider: 'contour-pulse',    val: 'contour-pulse-val',    label: 'Pulse rate',      fmt: (v) => `${v.toFixed(2)} Hz` },
+  { key: 'contour.depth',    fx: 'contour',  prop: 'depth',    slider: 'contour-depth',    val: 'contour-depth-val',    label: 'Pulse depth',     fmt: (v) => v.toFixed(2) },
+  { key: 'crt.scan',         fx: 'crt',      prop: 'scan',     slider: 'crt-scan',         val: 'crt-scan-val',         label: 'CRT scanline',    fmt: (v) => v.toFixed(2) },
+  { key: 'crt.mask',         fx: 'crt',      prop: 'mask',     slider: 'crt-mask',         val: 'crt-mask-val',         label: 'CRT mask',        fmt: (v) => v.toFixed(2) },
+  { key: 'crt.curve',        fx: 'crt',      prop: 'curve',    slider: 'crt-curve',        val: 'crt-curve-val',        label: 'CRT curve',       fmt: (v) => v.toFixed(2) },
+  { key: 'crt.flicker',      fx: 'crt',      prop: 'flicker',  slider: 'crt-flicker',      val: 'crt-flicker-val',      label: 'CRT flicker',     fmt: (v) => v.toFixed(2) },
+  { key: 'stretch.pos',      fx: 'stretch',  prop: 'pos',      slider: 'stretch-pos',      val: 'stretch-pos-val',      label: 'Stretch pos',     fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'stretch.amount',   fx: 'stretch',  prop: 'amount',   slider: 'stretch-amount',   val: 'stretch-amount-val',   label: 'Stretch amount',  fmt: (v) => v.toFixed(2) },
+  { key: 'stretch.jitter',   fx: 'stretch',  prop: 'jitter',   slider: 'stretch-jitter',   val: 'stretch-jitter-val',   label: 'Stretch jitter',  fmt: (v) => v.toFixed(2) },
+];
+const DEF_BY_KEY = Object.fromEntries(PARAM_DEFS.map((d) => [d.key, d]));
+
+/** Advance the animation clock; loop over the set duration. */
+function tickAnim() {
+  const now = performance.now() / 1000;
+  // Use an explicit null check: `|| now` would misfire when lastNow is 0.
+  const last = state.anim.lastNow == null ? now : state.anim.lastNow;
+  if (state.anim.playing) {
+    state.anim.t += now - last;
+    if (state.anim.t >= state.anim.duration) state.anim.t %= state.anim.duration;
+  }
+  state.anim.lastNow = now;
+}
+
+/** Linear-sample a sorted keyframe track at time t (holds at the ends). */
+function sampleTrack(track, t) {
+  if (track.length === 1) return track[0].v;
+  if (t <= track[0].t) return track[0].v;
+  const lastKf = track[track.length - 1];
+  if (t >= lastKf.t) return lastKf.v;
+  for (let i = 0; i < track.length - 1; i++) {
+    const a = track[i], b = track[i + 1];
+    if (t >= a.t && t <= b.t) {
+      const f = (t - a.t) / (b.t - a.t || 1);
+      return a.v + (b.v - a.v) * f;
+    }
+  }
+  return lastKf.v;
+}
+
+/** Push every keyframed param's sampled value into fx state + UI. Params
+    without keyframes are left under manual slider control. */
+function evalKeyframes() {
+  for (const key in state.keys) {
+    const track = state.keys[key];
+    if (!track || !track.length) continue;
+    const d = DEF_BY_KEY[key];
+    const v = sampleTrack(track, state.anim.t);
+    state.fx[d.fx][d.prop] = v;
+    const el = $(d.slider);
+    if (el && document.activeElement !== el) el.value = v;   // reflect on slider
+    $(d.val).textContent = d.fmt(v);
+  }
+  updateAnimReadout();
+}
+
+/** Bind one slider: manual value in fx state, plus auto-keying — if the
+    param already has keyframes, dragging writes a keyframe at the
+    playhead rather than a static value. */
+function bindSlider(sliderId, fxKey, prop, valId, fmtFn) {
+  const input = $(sliderId), label = $(valId);
+  const paramKey = `${fxKey}.${prop}`;
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value);
+    state.fx[fxKey][prop] = v;
+    label.textContent = fmtFn(v);
+    if (state.keys[paramKey]) setKeyframe(paramKey, state.anim.t, v);  // auto-key
+  });
+}
+PARAM_DEFS.forEach((d) => bindSlider(d.slider, d.fx, d.prop, d.val, d.fmt));
+
+/* ---- Keyframe mutation ---- */
+
+/** Insert or replace a keyframe for `param` at time t, keeping sorted. */
+function setKeyframe(param, t, v) {
+  const track = state.keys[param] || (state.keys[param] = []);
+  const tol = 0.03;                                  // merge near-identical times
+  const hit = track.findIndex((k) => Math.abs(k.t - t) < tol);
+  if (hit >= 0) track[hit].v = v;
+  else { track.push({ t, v }); track.sort((a, b) => a.t - b.t); }
+  renderTimeline();
+}
+
+/** ◆ button handler — key the param at the playhead using its current value. */
+function addKeyframeFor(param) {
+  const d = DEF_BY_KEY[param];
+  setKeyframe(param, state.anim.t, state.fx[d.fx][d.prop]);
+  refreshKeyButtons();
+}
+
+function deleteSelectedKey() {
+  if (!state.selKey) return;
+  const { param, index } = state.selKey;
+  const track = state.keys[param];
+  if (track) {
+    track.splice(index, 1);
+    if (!track.length) delete state.keys[param];
+  }
+  state.selKey = null;
+  refreshKeyButtons();
+  renderTimeline();
+}
+
+function clearAllKeys() {
+  state.keys = {};
+  state.selKey = null;
+  refreshKeyButtons();
+  renderTimeline();
+}
+
+/** Light up the ◆ button for any param that currently has keyframes. */
+function refreshKeyButtons() {
+  document.querySelectorAll('.kf-add').forEach((btn) => {
+    const p = btn.closest('.kf-row')?.dataset.param;
+    btn.classList.toggle('active', !!(p && state.keys[p]?.length));
+  });
+}
+
+/* Shape target switch: which luminance pole counts as "the object". */
+function setNoiseTarget(t) {
+  state.fx.noise.target = t;
+  const dark = t === 'dark';
+  $('noise-dark').className  = `btn-hard py-1.5 text-xs font-bold uppercase ${dark ? 'bg-paper text-ink' : 'bg-ink text-paper'}`;
+  $('noise-light').className = `btn-hard py-1.5 text-xs font-bold uppercase ${!dark ? 'bg-paper text-ink' : 'bg-ink text-paper'}`;
+  $('noise-dark').setAttribute('aria-pressed', dark);
+  $('noise-light').setAttribute('aria-pressed', !dark);
+}
+$('noise-dark').addEventListener('click', () => setNoiseTarget('dark'));
+$('noise-light').addEventListener('click', () => setNoiseTarget('light'));
+
+/* Shape-set selection: collect checked kinds; keep at least one on. */
+function syncShapeKinds() {
+  const checked = [...document.querySelectorAll('.shape-kind')].filter((c) => c.checked);
+  if (!checked.length) {
+    // Never allow an empty set — re-check Boxes as a fallback.
+    const box = document.querySelector('.shape-kind[data-kind="rect"]');
+    box.checked = true;
+    state.fx.shapes.kinds = ['rect'];
+    return;
+  }
+  state.fx.shapes.kinds = checked.map((c) => c.dataset.kind);
+}
+document.querySelectorAll('.shape-kind').forEach((c) =>
+  c.addEventListener('change', syncShapeKinds));
+$('shapes-random').addEventListener('change', (e) => {
+  state.fx.shapes.random = e.target.checked;
+});
+
+/* Depth near-pole switch: which end of the palette means "near". */
+function setDepthNear(t) {
+  state.fx.depth.near = t;
+  const light = t === 'light';
+  $('depth-light').className = `btn-hard py-1.5 text-xs font-bold uppercase ${light ? 'bg-paper text-ink' : 'bg-ink text-paper'}`;
+  $('depth-dark').className  = `btn-hard py-1.5 text-xs font-bold uppercase ${!light ? 'bg-paper text-ink' : 'bg-ink text-paper'}`;
+  $('depth-light').setAttribute('aria-pressed', light);
+  $('depth-dark').setAttribute('aria-pressed', !light);
+}
+$('depth-light').addEventListener('click', () => setDepthNear('light'));
+$('depth-dark').addEventListener('click', () => setDepthNear('dark'));
+
+/* ==============================================================
+   CONTOUR — ring colour editor
+   ============================================================== */
+
+const CONTOUR_PRESETS = {
+  blue:    ['#285AFF', '#5AA0FF', '#C8E6FF'],
+  red:     ['#FF2838', '#FF3C64', '#FF9BB0'],
+  acid:    ['#000000', '#CCFF00', '#FFFFFF'],
+  rainbow: ['#FF2838', '#FF7A00', '#CCFF00', '#00E5FF', '#2F6BFF', '#FF00A8'],
+};
+
+/** Render one <input type="color"> per contour ring colour. */
+function renderContourColors() {
+  const host = $('contour-colors');
+  host.innerHTML = '';
+  state.fx.contour.colors.forEach((c, i) => {
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = rgbToHex(c);
+    input.title = `Ring colour ${i + 1}`;
+    input.setAttribute('aria-label', `Contour ring colour ${i + 1}`);
+    input.style.cssText = 'width:30px;height:26px;border:2px solid #fff;background:#000;padding:0;cursor:pointer';
+    input.addEventListener('input', () => { state.fx.contour.colors[i] = hexToRgb(input.value); });
+    host.appendChild(input);
+  });
+}
+$('contour-col-add').addEventListener('click', () => {
+  if (state.fx.contour.colors.length >= 8) return;
+  state.fx.contour.colors.push({ r: 255, g: 255, b: 255 });
+  renderContourColors();
+});
+$('contour-col-remove').addEventListener('click', () => {
+  if (state.fx.contour.colors.length <= 1) return;
+  state.fx.contour.colors.pop();
+  renderContourColors();
+});
+document.querySelectorAll('.contour-preset').forEach((b) =>
+  b.addEventListener('click', () => {
+    state.fx.contour.colors = CONTOUR_PRESETS[b.dataset.preset].map(hexToRgb);
+    renderContourColors();
+  }));
+
+/* Toggling CONTOUR on a loaded model swaps the mesh material between the
+   normal shaded look and the slice shader, so hook the checkbox. */
+$('fx-contour').addEventListener('change', () => {
+  if (state.model.loaded) buildModelGroup(state.model.mode);
+});
+
+/* Lines-only display: hides the 3D object, leaving just the slice lines
+   (uniform-driven — no rebuild needed). */
+$('contour-hide').addEventListener('change', (e) => {
+  state.fx.contour.hide = e.target.checked;
+});
+
+/* STRETCH direction selector. */
+function setStretchDir(dir) {
+  state.fx.stretch.dir = dir;
+  document.querySelectorAll('.stretch-dir').forEach((b) => {
+    const on = b.dataset.dir === dir;
+    b.classList.toggle('bg-acid', on);
+    b.classList.toggle('text-ink', on);
+    b.classList.toggle('bg-ink', !on);
+    b.classList.toggle('text-paper', !on);
+    b.setAttribute('aria-pressed', on);
+  });
+}
+document.querySelectorAll('.stretch-dir').forEach((b) =>
+  b.addEventListener('click', () => setStretchDir(b.dataset.dir)));
+
+/* ==============================================================
+   3D MODEL — panel wiring
+   ============================================================== */
+
+function setModelMode(mode) {
+  state.model.mode = mode;
+  document.querySelectorAll('.model-mode').forEach((b) => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle('bg-acid', on);
+    b.classList.toggle('text-ink', on);
+    b.classList.toggle('bg-ink', !on);
+    b.classList.toggle('text-paper', !on);
+    b.setAttribute('aria-pressed', on);
+  });
+  if (state.model.loaded) buildModelGroup(mode);   // rebuild materials live
+}
+document.querySelectorAll('.model-mode').forEach((b) =>
+  b.addEventListener('click', () => setModelMode(b.dataset.mode)));
+
+$('model-spin').addEventListener('input', () => {
+  state.model.spin = parseFloat($('model-spin').value);
+  $('model-spin-val').textContent = state.model.spin.toFixed(2);
+});
+
+/* ==============================================================
+   AUTO LAYERS — control wiring
+   ============================================================== */
+
+const LAYER_FX_OPTIONS = [
+  ['none', '— none —'], ['dither', 'Dither'], ['halftone', 'Halftone'],
+  ['ascii', 'ASCII'], ['aberr', 'RGB Split'], ['noise', 'Noise Mask'],
+  ['blocks', 'Blocks'], ['shapes', 'Shapes'], ['depth', 'Depth Map'], ['contour', 'Contour'],
+  ['crt', 'CRT'], ['stretch', 'Stretch'],
+];
+
+/** (Re)build one effect <select> per layer band, dark → light. */
+function buildLayerSelects() {
+  const host = $('layers-list');
+  host.innerHTML = '';
+  const n = state.layers.count;
+  for (let k = 0; k < n; k++) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2';
+
+    const tag = document.createElement('span');
+    tag.className = 'text-[9px] uppercase text-white/50 w-20 flex-none';
+    tag.textContent = k === 0 ? `L${k + 1} · darkest`
+                    : k === n - 1 ? `L${k + 1} · lightest`
+                    : `L${k + 1} · mid`;
+
+    const sel = document.createElement('select');
+    sel.className = 'flex-1 bg-ink border-2 border-paper text-acid text-[11px] uppercase font-bold px-1 py-1';
+    sel.setAttribute('aria-label', `Effect for layer ${k + 1}`);
+    for (const [v, label] of LAYER_FX_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = label;
+      sel.appendChild(opt);
+    }
+    sel.value = state.layers.assign[k] || 'none';
+    sel.addEventListener('change', () => { state.layers.assign[k] = sel.value; });
+
+    row.appendChild(tag);
+    row.appendChild(sel);
+    host.appendChild(row);
+  }
+}
+
+$('layers-on').addEventListener('change', (e) => { state.layers.on = e.target.checked; });
+$('layers-count').addEventListener('input', () => {
+  state.layers.count = parseInt($('layers-count').value, 10);
+  $('layers-count-val').textContent = String(state.layers.count);
+  buildLayerSelects();
+});
+
+
+/* ==============================================================
+   KEYFRAME UI: ◆ buttons, timeline tracks, transport, collapse
+   ============================================================== */
+
+/* Inject a ◆ "add keyframe" button into every animatable slider row,
+   and tag the row with data-param so handlers can resolve it. Done in
+   JS so the markup for the 10 rows stays clean. */
+PARAM_DEFS.forEach((d) => {
+  const valSpan = $(d.val);
+  const row = valSpan.closest('div').parentElement;   // the slider's wrapper <div>
+  row.classList.add('kf-row');
+  row.dataset.param = d.key;
+  const btn = document.createElement('button');
+  btn.className = 'kf-add';
+  btn.textContent = '◆';
+  btn.title = 'Add keyframe at playhead';
+  btn.setAttribute('aria-label', `Add keyframe for ${d.label}`);
+  // Sit the ◆ right after the value readout.
+  valSpan.after(btn);
+});
+
+/* One delegated listener handles every ◆ button. */
+$('sidebar').addEventListener('click', (e) => {
+  const btn = e.target.closest('.kf-add');
+  if (!btn) return;
+  const param = btn.closest('.kf-row')?.dataset.param;
+  if (param) addKeyframeFor(param);
+});
+
+/* ---- Collapse / hide panel (effect keeps running) ----
+   Injects an eye button into each stage header. Collapsing hides the
+   stage's controls but the effect + its keyframes stay active. */
+document.querySelectorAll('.fx-stage').forEach((section) => {
+  const cluster = section.querySelector('.flex.flex-col');   // the ▲▼ column
+  const eye = document.createElement('button');
+  eye.className = 'fx-eye text-xs';
+  eye.textContent = '◉';
+  eye.title = 'Hide controls (effect keeps running)';
+  eye.setAttribute('aria-label', 'Hide or show this stage\u2019s controls');
+  eye.addEventListener('click', () => {
+    const collapsed = section.classList.toggle('collapsed');
+    eye.textContent = collapsed ? '◌' : '◉';
+    eye.title = collapsed ? 'Show controls' : 'Hide controls (effect keeps running)';
+  });
+  cluster.parentElement.insertBefore(eye, cluster);   // place eye before ▲▼
+});
+
+/* ---- Animation transport ---- */
+function updateAnimReadout() {
+  $('anim-time').textContent = `${state.anim.t.toFixed(1)} / ${state.anim.duration.toFixed(1)}s`;
+  if (document.activeElement !== $('anim-scrub')) {
+    $('anim-scrub').value = Math.round((state.anim.t / state.anim.duration) * 1000);
+  }
+  const ph = $('kf-playhead-global');
+  if (ph) ph.style.left = `${(state.anim.t / state.anim.duration) * 100}%`;
+}
+
+$('anim-play').addEventListener('click', () => {
+  state.anim.playing = !state.anim.playing;
+  $('anim-play').textContent = state.anim.playing ? '❚❚' : '▶';
+});
+
+$('anim-scrub').addEventListener('input', () => {
+  state.anim.t = (parseFloat($('anim-scrub').value) / 1000) * state.anim.duration;
+  updateAnimReadout();
+});
+
+$('anim-dur').addEventListener('change', () => {
+  const v = Math.max(0.5, Math.min(60, parseFloat($('anim-dur').value) || 5));
+  state.anim.duration = v;
+  $('anim-dur').value = v;
+  if (state.anim.t > v) state.anim.t = 0;
+  renderTimeline();
+});
+
+$('kf-clear').addEventListener('click', clearAllKeys);
+$('kf-del').addEventListener('click', deleteSelectedKey);
+
+/* ---- Timeline track rendering ----
+   Draws one row per keyframed param, with a diamond per keyframe. Clicking
+   a diamond selects it; clicking empty track seeks the playhead there. */
+function renderTimeline() {
+  const host = $('kf-tracks');
+  const params = Object.keys(state.keys).filter((k) => state.keys[k]?.length);
+
+  host.innerHTML = '';
+  if (!params.length) {
+    host.innerHTML = '<p class="text-[9px] text-white/30 uppercase">No keyframes · pipeline is static</p>';
+    $('kf-del').classList.add('hidden');
+    return;
+  }
+
+  for (const param of params) {
+    const d = DEF_BY_KEY[param];
+    const track = state.keys[param];
+
+    const row = document.createElement('div');
+    row.innerHTML = `<div class="text-[9px] uppercase text-white/50 mb-0.5">${d.label}</div>`;
+
+    const lane = document.createElement('div');
+    lane.className = 'kf-track';
+    lane.innerHTML = '<div class="kf-track-line"></div>';
+
+    // Seek by clicking empty lane space.
+    lane.addEventListener('click', (e) => {
+      if (e.target.classList.contains('kf-diamond')) return;
+      const box = lane.getBoundingClientRect();
+      const f = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
+      state.anim.t = f * state.anim.duration;
+      state.anim.playing = false;
+      $('anim-play').textContent = '▶';
+      updateAnimReadout();
+    });
+
+    track.forEach((kf, i) => {
+      const dot = document.createElement('button');
+      dot.className = 'kf-diamond';
+      dot.style.left = `${(kf.t / state.anim.duration) * 100}%`;
+      dot.title = `${d.label} = ${d.fmt(kf.v)} @ ${kf.t.toFixed(1)}s`;
+      if (state.selKey && state.selKey.param === param && state.selKey.index === i) dot.classList.add('sel');
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.selKey = { param, index: i };
+        $('kf-del').classList.remove('hidden');
+        renderTimeline();
+      });
+      lane.appendChild(dot);
+    });
+
+    // Per-lane playhead marker.
+    const ph = document.createElement('div');
+    ph.className = 'kf-playhead';
+    ph.style.left = `${(state.anim.t / state.anim.duration) * 100}%`;
+    if (params[0] === param) ph.id = 'kf-playhead-global';   // one tracked for live move
+    lane.appendChild(ph);
+
+    row.appendChild(lane);
+    host.appendChild(row);
+  }
+  $('kf-del').classList.toggle('hidden', !state.selKey);
+}
+
+/* ---- Background-key (transparent export) controls ---- */
+$('bg-key').addEventListener('change', (e) => {
+  state.bgKey.on = e.target.checked;
+  // Reveal the transparency checkerboard behind the canvas.
+  display.classList.toggle('alpha-bg', state.bgKey.on);
+  display.classList.toggle('bg-ink', !state.bgKey.on);
+});
+function setBgTarget(t) {
+  state.bgKey.target = t;
+  const dark = t === 'dark';
+  $('bg-dark').className  = `btn-hard py-1.5 text-xs font-bold uppercase ${dark ? 'bg-paper text-ink' : 'bg-ink text-paper'}`;
+  $('bg-light').className = `btn-hard py-1.5 text-xs font-bold uppercase ${!dark ? 'bg-paper text-ink' : 'bg-ink text-paper'}`;
+  $('bg-dark').setAttribute('aria-pressed', dark);
+  $('bg-light').setAttribute('aria-pressed', !dark);
+}
+$('bg-dark').addEventListener('click', () => setBgTarget('dark'));
+$('bg-light').addEventListener('click', () => setBgTarget('light'));
+$('bg-thresh').addEventListener('input', () => {
+  state.bgKey.thresh = parseFloat($('bg-thresh').value);
+  $('bg-thresh-val').textContent = $('bg-thresh').value;
+});
+$('bg-feather').addEventListener('input', () => {
+  state.bgKey.feather = parseFloat($('bg-feather').value);
+  $('bg-feather-val').textContent = $('bg-feather').value;
+});
+
+
+/* ==============================================================
+   OUTPUT PALETTE — presets + editable swatches
+   ============================================================== */
+
+const hexToRgb = (h) => ({
+  r: parseInt(h.slice(1, 3), 16),
+  g: parseInt(h.slice(3, 5), 16),
+  b: parseInt(h.slice(5, 7), 16),
+});
+const rgbToHex = (c) => '#' + [c.r, c.g, c.b]
+  .map((v) => clampi(v | 0, 0, 255).toString(16).padStart(2, '0')).join('');
+
+/* Preset palettes, each ordered darkest → lightest. */
+const PALETTE_PRESETS = {
+  mono:    { name: 'Mono',    hex: ['#000000', '#FFFFFF'] },
+  acid:    { name: 'Acid',    hex: ['#000000', '#CCFF00', '#FFFFFF'] },
+  magenta: { name: 'Magenta', hex: ['#000000', '#FF00A8', '#FFFFFF'] },
+  amber:   { name: 'Amber',   hex: ['#000000', '#FF7A00', '#FFE7B0'] },
+  cyan:    { name: 'Cyan',    hex: ['#001014', '#00E5FF', '#EAFFFF'] },
+  ice:     { name: 'Ice',     hex: ['#05070D', '#2F6BFF', '#BFE0FF'] },
+  toxic:   { name: 'Toxic',   hex: ['#0A0A00', '#00FF6A', '#CCFF00', '#FFFFFF'] },
+  ember:   { name: 'Ember',   hex: ['#000000', '#8B0000', '#FF2D00', '#FFC400'] },
+  vapor:   { name: 'Vapor',   hex: ['#12002E', '#FF2E97', '#00E0FF', '#FFFFFF'] },
+};
+
+/** Apply an ordered hex list as the live palette. `id` names the source
+    preset, or 'custom' when the user has hand-edited. */
+function applyPalette(hexList, id) {
+  state.palette = { id, colors: hexList.map(hexToRgb) };
+  highlightPreset(id);
+  renderSwatches();
+}
+function setPalette(presetId) {
+  const p = PALETTE_PRESETS[presetId] || PALETTE_PRESETS.mono;
+  applyPalette(p.hex, presetId);
+}
+
+/** Build the preset button grid once. */
+function buildPresetButtons() {
+  const host = $('pal-presets');
+  host.innerHTML = '';
+  for (const id in PALETTE_PRESETS) {
+    const p = PALETTE_PRESETS[id];
+    const btn = document.createElement('button');
+    btn.className = 'pal-preset btn-hard border-2 border-paper overflow-hidden';
+    btn.dataset.pal = id;
+    btn.setAttribute('aria-label', `${p.name} palette`);
+    btn.title = p.name;
+    // Mini colour-strip preview + label.
+    const strip = p.hex.map((h) => `<span style="flex:1;background:${h}"></span>`).join('');
+    btn.innerHTML =
+      `<span style="display:flex;height:14px">${strip}</span>` +
+      `<span class="block text-[9px] uppercase py-0.5 text-paper">${p.name}</span>`;
+    btn.addEventListener('click', () => setPalette(id));
+    host.appendChild(btn);
+  }
+}
+
+/** Outline the active preset (or none, when custom). */
+function highlightPreset(id) {
+  document.querySelectorAll('.pal-preset').forEach((b) => {
+    const on = b.dataset.pal === id;
+    b.style.outline = on ? '2px solid #CCFF00' : 'none';
+    b.style.outlineOffset = on ? '1px' : '0';
+  });
+}
+
+/** Render one <input type="color"> per palette entry. Editing any swatch
+    switches the palette id to 'custom'. */
+function renderSwatches() {
+  const host = $('pal-swatches');
+  host.innerHTML = '';
+  state.palette.colors.forEach((c, i) => {
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = rgbToHex(c);
+    input.title = `Swatch ${i + 1} (dark → light)`;
+    input.setAttribute('aria-label', `Palette colour ${i + 1}`);
+    input.style.cssText = 'width:34px;height:28px;border:2px solid #fff;background:#000;padding:0;cursor:pointer';
+    input.addEventListener('input', () => {
+      state.palette.colors[i] = hexToRgb(input.value);
+      state.palette.id = 'custom';
+      highlightPreset('custom');
+    });
+    host.appendChild(input);
+  });
+}
+
+/* Add / remove swatches (2..6 colours). */
+$('pal-add').addEventListener('click', () => {
+  if (state.palette.colors.length >= 6) return;
+  // Insert a mid-grey before the lightest so ordering stays sensible.
+  const cols = state.palette.colors;
+  cols.splice(cols.length - 1, 0, { r: 128, g: 128, b: 128 });
+  state.palette.id = 'custom';
+  highlightPreset('custom');
+  renderSwatches();
+});
+$('pal-remove').addEventListener('click', () => {
+  if (state.palette.colors.length <= 2) return;   // need ≥2 for dithering
+  state.palette.colors.pop();
+  state.palette.id = 'custom';
+  highlightPreset('custom');
+  renderSwatches();
+});
+
+/* Emergency reset: all effects off, all parameters to factory. */
+$('btn-reset').addEventListener('click', () => {
+  state.fx.dither   = { on: false, scale: 1 };
+  state.fx.halftone = { on: false, scale: 8, contrast: 1.4 };
+  state.fx.ascii    = { on: false, size: 10 };
+  state.fx.aberr    = { on: false, offset: 4, glitch: 0 };
+  state.fx.noise    = { on: false, block: 10, speed: 0.35, density: 0.7, thresh: 90, target: 'dark' };
+  state.fx.blocks   = { on: false, size: 12, chaos: 0.4 };
+  state.fx.shapes   = { on: false, density: 0.35, size: 28, thresh: 30, kinds: ['rect', 'circle', 'cross'], random: true };
+  state.fx.depth    = { on: false, bias: 0.35, smooth: 2, near: 'light' };
+  state.fx.contour  = { on: false, rings: 16, weight: 1.4, fill: 0.15, pulse: 0.6, depth: 0.5, hide: false,
+                        colors: [{ r: 40, g: 90, b: 255 }, { r: 90, g: 160, b: 255 }, { r: 200, g: 230, b: 255 }] };
+  renderContourColors();
+  $('contour-hide').checked = false;
+  if (state.model.loaded) buildModelGroup(state.model.mode);   // drop slice shader
+  state.fx.crt      = { on: false, scan: 0.35, mask: 0.3, curve: 0.2, flicker: 0.15 };
+  state.fx.stretch  = { on: false, dir: 'down', pos: 0.5, amount: 0.6, jitter: 0.2 };
+  setStretchDir('down');
+  state.model.mode  = 'surface';
+  state.model.spin  = 0.4;
+  setModelMode('surface');
+  $('model-spin').value = 0.4;
+  $('model-spin-val').textContent = '0.40';
+  setDepthNear('light');
+  state.layers      = { on: false, count: 3, assign: ['none', 'none', 'none', 'none'] };
+  setPalette('mono');
+  setNoiseTarget('dark');
+
+  // Sync every control back to defaults.
+  const setVal = (id, v, labelId, txt) => { $(id).value = v; if (labelId) $(labelId).textContent = txt; };
+  ['fx-dither', 'fx-halftone', 'fx-ascii', 'fx-aberr', 'fx-noise', 'fx-blocks', 'fx-shapes', 'fx-depth', 'fx-contour', 'fx-crt', 'fx-stretch'].forEach((id) => { $(id).checked = false; });
+  setVal('dither-scale', 1, 'dither-scale-val', '1 px');
+  setVal('halftone-scale', 8, 'halftone-scale-val', '8 px');
+  setVal('halftone-contrast', 1.4, 'halftone-contrast-val', '1.4×');
+  setVal('ascii-size', 10, 'ascii-size-val', '10 px');
+  setVal('aberr-offset', 4, 'aberr-offset-val', '4 px');
+  setVal('glitch-int', 0, 'glitch-int-val', '0.00');
+  setVal('noise-thresh', 90, 'noise-thresh-val', '90');
+  setVal('noise-block', 10, 'noise-block-val', '10 px');
+  setVal('noise-speed', 0.35, 'noise-speed-val', '0.35');
+  setVal('noise-density', 0.7, 'noise-density-val', '0.70');
+  setVal('blocks-size', 12, 'blocks-size-val', '12 px');
+  setVal('blocks-chaos', 0.4, 'blocks-chaos-val', '0.40');
+  setVal('shapes-density', 0.35, 'shapes-density-val', '0.35');
+  setVal('shapes-size', 28, 'shapes-size-val', '28 px');
+  setVal('shapes-thresh', 30, 'shapes-thresh-val', '30');
+  setVal('depth-bias', 0.35, 'depth-bias-val', '0.35');
+  setVal('depth-smooth', 2, 'depth-smooth-val', '2');
+  setVal('contour-rings', 16, 'contour-rings-val', '16');
+  setVal('contour-thresh', 1.4, 'contour-thresh-val', '1.4');
+  setVal('contour-spacing', 0.15, 'contour-spacing-val', '0.15');
+  setVal('contour-pulse', 0.6, 'contour-pulse-val', '0.60 Hz');
+  setVal('contour-depth', 0.5, 'contour-depth-val', '0.50');
+  setVal('crt-scan', 0.35, 'crt-scan-val', '0.35');
+  setVal('crt-mask', 0.3, 'crt-mask-val', '0.30');
+  setVal('crt-curve', 0.2, 'crt-curve-val', '0.20');
+  setVal('crt-flicker', 0.15, 'crt-flicker-val', '0.15');
+  setVal('stretch-pos', 0.5, 'stretch-pos-val', '50%');
+  setVal('stretch-amount', 0.6, 'stretch-amount-val', '0.60');
+  setVal('stretch-jitter', 0.2, 'stretch-jitter-val', '0.20');
+  // Restore default shape set (boxes/circles/crosses) + randomize on.
+  document.querySelectorAll('.shape-kind').forEach((c) => {
+    c.checked = ['rect', 'circle', 'cross'].includes(c.dataset.kind);
+  });
+  $('shapes-random').checked = true;
+
+  // Reset the auto-layer panel.
+  $('layers-on').checked = false;
+  $('layers-count').value = 3;
+  $('layers-count-val').textContent = '3';
+  buildLayerSelects();
+
+  // Restore the factory pipeline order by re-sorting the DOM stages.
+  const DEFAULT_ORDER = ['dither', 'halftone', 'ascii', 'aberr', 'noise', 'blocks', 'shapes', 'depth', 'contour', 'crt', 'stretch', 'layers'];
+  DEFAULT_ORDER.forEach((fxKey) => {
+    const sec = fxList.querySelector(`.fx-stage[data-fx="${fxKey}"]`);
+    if (sec) fxList.appendChild(sec);   // append in canonical order
+  });
+  syncOrderFromDOM();
+
+  // Wipe animation: clear all keyframes, reset the clock.
+  clearAllKeys();
+  state.anim.t = 0;
+  state.anim.playing = true;
+  state.anim.duration = 5;
+  $('anim-dur').value = 5;
+  $('anim-play').textContent = '❚❚';
+
+  // Reset transparency keyer.
+  state.bgKey = { on: false, target: 'dark', thresh: 40, feather: 10 };
+  $('bg-key').checked = false;
+  setBgTarget('dark');
+  setVal('bg-thresh', 40, 'bg-thresh-val', '40');
+  setVal('bg-feather', 10, 'bg-feather-val', '10');
+  display.classList.remove('alpha-bg');
+  display.classList.add('bg-ink');
+
+  // Un-collapse any hidden stage panels.
+  document.querySelectorAll('.fx-stage.collapsed').forEach((s) => {
+    s.classList.remove('collapsed');
+    const eye = s.querySelector('.fx-eye');
+    if (eye) eye.textContent = '◉';
+  });
+
+  // Restore default export resolution.
+  setExportCap('1080');
+
+  updateFxCount();
+  setStatus('PIPELINE PURGED // FACTORY STATE');
+});
+
+/* ==============================================================
+   EXPORT ENGINE
+   ============================================================== */
+
+/* Output resolution selector. 'source' means the media's native size
+   (no upscale); numeric values cap the longest edge. */
+function setExportCap(cap) {
+  // 'source' → use the largest native edge so we never upscale.
+  state.exportCap = cap === 'source'
+    ? Math.max(state.nativeW || state.previewCap, state.nativeH || state.previewCap, 1)
+    : parseInt(cap, 10);
+
+  document.querySelectorAll('.res-btn').forEach((b) => {
+    const active = b.dataset.cap === String(cap);
+    // Numeric buttons live in a shared grid; keep borders, swap fill.
+    b.classList.toggle('bg-acid', active);
+    b.classList.toggle('text-ink', active);
+    b.classList.toggle('bg-ink', !active);
+    b.classList.toggle('text-paper', !active);
+    b.setAttribute('aria-pressed', active);
+  });
+  state.exportCapId = cap;
+}
+document.querySelectorAll('.res-btn').forEach((b) => {
+  b.addEventListener('click', () => setExportCap(b.dataset.cap));
+});
+
+/* Frame export: render the current frame at the export resolution, then
+   dump it as a PNG. The pipeline is briefly resized up, composited once,
+   captured, and restored — the rAF loop is paused meanwhile (busyExport)
+   so it doesn't fight over the canvas size. */
+$('btn-export-frame').addEventListener('click', () => {
+  if (!state.mediaType) { setStatus('EXPORT DENIED // NO SIGNAL', true); return; }
+
+  state.busyExport = true;
+  sizePipeline(0, 0, state.exportCap);   // re-fit native dims to export cap
+  composite();                            // render one high-res frame now
+
+  display.toBlob((blob) => {
+    if (blob) {
+      downloadBlob(blob, `signal-frame-${state.W}x${state.H}-${Date.now()}.png`);
+      setStatus(`FRAME COMMITTED // PNG ${state.W}×${state.H}`);
+    }
+    sizePipeline(0, 0, state.previewCap); // restore fast preview size
+    state.busyExport = false;
+  }, 'image/png');
+});
+
+/* Motion export: MediaRecorder over canvas.captureStream().
+   Records exactly what the render loop paints, effects included.
+   (Video/GIF audio is not routed into the recording — the capture
+   stream is the processed canvas only.) */
+$('btn-record').addEventListener('click', () => {
+  if (state.recorder && state.recorder.state !== 'inactive') { stopRecording(); return; }
+  if (!state.mediaType) { setStatus('RECORD DENIED // NO SIGNAL', true); return; }
+  startRecording();
+});
+
+function pickMime() {
+  // When exporting transparent, prefer VP8/VP9 which can carry an alpha
+  // channel in WebM (Chromium). MP4 (Safari) has no alpha, so a keyed
+  // export there will come out on black — PNG frames stay the reliable
+  // route for guaranteed transparency.
+  const alphaFirst = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4',
+  ];
+  const normal = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4',
+  ];
+  const candidates = state.bgKey.on ? alphaFirst : normal;
+  return candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+
+function startRecording() {
+  const mime = pickMime();
+  if (!mime) { setStatus('RECORD FAULT // MEDIARECORDER UNSUPPORTED', true); return; }
+
+  // Bump the pipeline up to the export resolution BEFORE grabbing the
+  // stream, so the capture track locks onto the high-res dimensions.
+  // captureStream() reads the canvas size at call time, so we resize and
+  // render one frame first. Preview is restored when recording stops.
+  sizePipeline(0, 0, state.exportCap);
+  composite();
+
+  const fps = 30;
+  // Scale the bitrate with the pixel count so high-res output stays crisp
+  // (~0.25 bits per pixel per frame), clamped to a sane 8–50 Mbps band.
+  const bitrate = Math.max(8_000_000, Math.min(50_000_000,
+    Math.round(state.W * state.H * fps * 0.25)));
+
+  const stream = display.captureStream(fps);
+  state.recChunks = [];
+  state.recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
+
+  const recW = state.W, recH = state.H;   // capture the dims for the readout
+  state.recorder.ondataavailable = (e) => { if (e.data.size) state.recChunks.push(e.data); };
+  state.recorder.onstop = () => {
+    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(state.recChunks, { type: mime });
+    downloadBlob(blob, `signal-capture-${recW}x${recH}-${Date.now()}.${ext}`);
+    state.recChunks = [];
+    stream.getTracks().forEach((t) => t.stop());   // free the capture track
+    sizePipeline(0, 0, state.previewCap);          // restore fast preview
+    setStatus(`CAPTURE COMMITTED // ${recW}×${recH} FILE WRITTEN`);
+  };
+
+  state.recorder.start(250);                        // gather chunks every 250 ms
+
+  if (state.bgKey.on && mime.includes('mp4')) {
+    setStatus('NOTE // MP4 HAS NO ALPHA — USE PNG FOR TRANSPARENCY', true);
+  }
+
+  // If a video is loaded and paused, roll it so there's motion to record.
+  if (state.mediaType === 'video' && state.video.paused) {
+    state.video.play().catch(() => {});
+    updateTransportUI();
+  }
+
+  $('rec-indicator').classList.remove('hidden');
+  $('rec-indicator').classList.add('flex');
+  $('btn-record').textContent = '■ Stop & download';
+  $('btn-record').classList.add('bg-mag', 'text-ink');
+  setStatus(`RECORDING // ${recW}×${recH} STREAM LIVE`, true);
+}
+
+function stopRecording() {
+  if (state.recorder && state.recorder.state !== 'inactive') state.recorder.stop();
+  state.recorder = null;
+  $('rec-indicator').classList.add('hidden');
+  $('rec-indicator').classList.remove('flex');
+  $('btn-record').textContent = '● Record output [WEBM]';
+  $('btn-record').classList.remove('bg-mag', 'text-ink');
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Give the browser a beat to start the download before revoking.
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* ==============================================================
+   BOOT
+   ============================================================== */
+syncOrderFromDOM();  // seed state.order + badges + footer from DOM order
+updateFxCount();
+refreshKeyButtons(); // ◆ inactive until first keyframe
+renderTimeline();    // empty-state message
+updateAnimReadout(); // 0.0 / 5.0s
+buildPresetButtons();// palette preset grid
+setPalette('mono');  // seed default palette + swatches
+setExportCap('1080');// default export resolution
+buildLayerSelects(); // auto-layer effect routing rows
+setDepthNear('light');// depth near-pole default
+setModelMode('surface'); // model render-mode default
+renderContourColors(); // contour ring colour swatches
+setStretchDir('down'); // stretch default direction
+renderFrame();      // the loop idles cheaply until a source arrives
+</script>
+</body>
+</html>
