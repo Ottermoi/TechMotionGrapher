@@ -207,6 +207,19 @@
   .fx-eye:focus-visible { outline: 2px solid #FF00A8; outline-offset: 1px; }
   .fx-stage.collapsed .fx-collapsible { display: none; }
 
+  /* Collapsed stages read as compact rows; the header stays interactive.
+     A chevron rotates to signal expand/collapse state. */
+  .fx-chevron { color: rgba(255,255,255,0.45); transition: transform 0.12s ease; font-size: 10px; }
+  .fx-stage:not(.collapsed) .fx-chevron { transform: rotate(90deg); color: #CCFF00; }
+  .fx-stage.collapsed { background: rgba(255,255,255,0.015); }
+  .fx-stage .fx-headrow { cursor: pointer; }
+  .fx-stage .fx-headrow:hover .fx-name { color: #CCFF00; }
+  .fx-name { transition: color 0.1s; }
+  /* An enabled-but-collapsed stage gets an acid tick so you can see it's live. */
+  .fx-stage.collapsed input.fx-toggle:checked ~ .fx-name::after {
+    content: '●'; color: #CCFF00; font-size: 8px; margin-left: 6px; vertical-align: middle;
+  }
+
   /* ---------- Keyframe timeline ---------- */
   .kf-track {
     position: relative; height: 20px; background: #0c0c0c;
@@ -281,6 +294,36 @@
         <canvas id="display" class="hidden max-w-full max-h-full border-2 border-paper bg-ink"
                 style="image-rendering: pixelated;"></canvas>
 
+        <!-- On-canvas 3D model controls (shown only when a model loads) -->
+        <div id="model-hud" class="hidden absolute top-8 left-8 panel p-3 w-60 select-none">
+          <div class="flex items-center justify-between mb-2">
+            <span class="h-display text-base text-paper">3D <span class="text-acid">MODEL</span></span>
+            <button id="model-hud-min" class="btn-hard text-[9px] uppercase text-white/50 hover:text-acid border border-white/40 px-1.5 leading-none" title="Minimise">–</button>
+          </div>
+          <div id="model-hud-body" class="space-y-2">
+            <div>
+              <div class="text-[9px] text-white/50 uppercase mb-1">Render as</div>
+              <div class="grid grid-cols-2 gap-0 border-2 border-paper text-[10px] font-bold uppercase">
+                <button class="model-mode btn-hard py-1 bg-acid text-ink border-r-2 border-b-2 border-paper" data-mode="surface">Surface</button>
+                <button class="model-mode btn-hard py-1 bg-ink text-paper border-b-2 border-paper" data-mode="wire">Wire</button>
+                <button class="model-mode btn-hard py-1 bg-ink text-paper border-r-2 border-paper" data-mode="points">Verts</button>
+                <button class="model-mode btn-hard py-1 bg-ink text-paper" data-mode="texture">FX Skin</button>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[9px] uppercase text-white/60">
+                <label for="model-spin-hud">Spin</label><span id="model-spin-hud-val" class="text-acid">0.40</span>
+              </div>
+              <input type="range" id="model-spin-hud" min="0" max="2" step="0.05" value="0.4" />
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer pt-1 border-t border-white/20">
+              <input type="checkbox" id="model-autofit" class="fx-toggle" style="width:16px;height:16px" checked />
+              <span class="text-[9px] uppercase text-white/60">Auto-rotate</span>
+            </label>
+            <p class="text-[8px] text-white/35 uppercase leading-relaxed">Drag on the canvas to orbit · scroll to zoom</p>
+          </div>
+        </div>
+
         <input type="file" id="file-input" class="hidden"
                accept=".mp4,.mov,.png,.jpg,.jpeg,.gif,.webp,.glb,.gltf,.obj,video/mp4,video/quicktime,image/png,image/jpeg,image/gif,image/webp,model/gltf-binary,model/gltf+json" />
       </div>
@@ -306,8 +349,14 @@
     <aside id="sidebar" class="w-80 flex-none border-l-2 border-paper overflow-y-auto panel !border-y-0 !border-r-0">
 
       <div class="p-4 border-b-2 border-paper">
-        <h2 class="h-display text-xl text-paper">FX <span class="text-acid">PIPELINE</span></h2>
-        <p class="text-[10px] text-white/50 uppercase mt-1">Stackable · order 01→04 · realtime</p>
+        <div class="flex items-center justify-between">
+          <h2 class="h-display text-xl text-paper">FX <span class="text-acid">PIPELINE</span></h2>
+          <div class="flex gap-1">
+            <button id="fx-expand-all" class="btn-hard text-[9px] uppercase text-white/60 hover:text-acid border border-white/40 px-1.5 py-0.5">Expand</button>
+            <button id="fx-collapse-all" class="btn-hard text-[9px] uppercase text-white/60 hover:text-acid border border-white/40 px-1.5 py-0.5">Collapse</button>
+          </div>
+        </div>
+        <p class="text-[10px] text-white/50 uppercase mt-1">Tap a stage to expand · drag to reorder · realtime</p>
       </div>
 
       <!-- Global output palette (drives Dither / Halftone / ASCII) -->
@@ -347,7 +396,7 @@
       <div id="fx-list">
 
         <!-- DITHER -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="dither">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="dither">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Dither to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -371,7 +420,7 @@
         </section>
 
         <!-- HALFTONE -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="halftone">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="halftone">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Halftone to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -401,7 +450,7 @@
         </section>
 
         <!-- ASCII -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="ascii">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="ascii">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Ascii to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -425,7 +474,7 @@
         </section>
 
         <!-- RGB SPLIT / GLITCH -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="aberr">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="aberr">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag RGB Split to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -455,7 +504,7 @@
         </section>
 
         <!-- NOISE MASK (animated outline overlay) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="noise">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="noise">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Noise Mask to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -507,7 +556,7 @@
         </section>
 
         <!-- BLOCKS (chunky corrupted pixelation) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="blocks">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="blocks">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Blocks to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -540,7 +589,7 @@
         </section>
 
         <!-- SHAPES (contour wireframes) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="shapes">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="shapes">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Shapes to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -595,7 +644,7 @@
         </section>
 
         <!-- DEPTH MAP (heuristic depth estimation) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="depth">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="depth">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Depth Map to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -636,7 +685,7 @@
         </section>
 
         <!-- CONTOUR (pulsing concentric outlines) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="contour">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="contour">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Contour to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -716,7 +765,7 @@
         </section>
 
         <!-- CRT (scanlines, phosphor mask, curvature) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="crt">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="crt">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag CRT to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -761,7 +810,7 @@
         </section>
 
         <!-- STRETCH (pixel smear / scan-drag) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="stretch">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="stretch">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Stretch to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -810,7 +859,7 @@
         </section>
 
         <!-- AUTO LAYERS (a movable pipeline stage) -->
-        <section class="fx-stage p-4 border-b-2 border-paper" data-fx="layers">
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="layers">
           <div class="flex items-center gap-2">
             <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Auto Layers to reorder">⣿</button>
             <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -838,34 +887,6 @@
         </section>
 
       </div><!-- /#fx-list -->
-
-      <!-- ================= 3D MODEL (visible when a model is loaded) ================= -->
-      <section id="model-panel" class="hidden p-4 border-b-2 border-paper">
-        <h3 class="h-display text-lg text-paper">3D <span class="text-acid">MODEL</span></h3>
-        <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
-          The model renders live into the pipeline — every stage above processes it
-        </p>
-        <div class="mt-3 space-y-3">
-          <div>
-            <div class="text-[10px] text-white/50 uppercase mb-1">Render as</div>
-            <div class="grid grid-cols-2 gap-0 border-2 border-paper text-[11px] font-bold uppercase">
-              <button class="model-mode btn-hard py-1.5 bg-acid text-ink border-r-2 border-b-2 border-paper" data-mode="surface">Surface</button>
-              <button class="model-mode btn-hard py-1.5 bg-ink text-paper border-b-2 border-paper" data-mode="wire">Wireframe</button>
-              <button class="model-mode btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-mode="points">Vertices</button>
-              <button class="model-mode btn-hard py-1.5 bg-ink text-paper" data-mode="texture">FX Texture</button>
-            </div>
-            <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
-              FX Texture wraps the processed output back onto the model as a live feedback skin
-            </p>
-          </div>
-          <div>
-            <div class="flex justify-between text-[10px] uppercase text-white/60">
-              <label for="model-spin">Spin speed</label><span id="model-spin-val" class="text-acid">0.40</span>
-            </div>
-            <input type="range" id="model-spin" min="0" max="2" step="0.05" value="0.4" />
-          </div>
-        </div>
-      </section>
 
       <!-- ================= KEYFRAME TIMELINE ================= -->
       <section class="p-4 border-b-2 border-paper">
@@ -949,6 +970,20 @@
           </p>
         </div>
 
+        <!-- Export format: WebM, MP4 (both browsers), MOV (alpha), GIF. -->
+        <div>
+          <div class="text-[10px] text-white/50 uppercase mb-1">Video format</div>
+          <div id="fmt-grid" class="grid grid-cols-4 gap-0 border-2 border-paper text-[11px] font-bold uppercase">
+            <button class="fmt-btn btn-hard py-1.5 bg-acid text-ink border-r-2 border-paper" data-fmt="webm">WebM</button>
+            <button class="fmt-btn btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-fmt="mp4">MP4</button>
+            <button class="fmt-btn btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-fmt="mov">MOV</button>
+            <button class="fmt-btn btn-hard py-1.5 bg-ink text-paper" data-fmt="gif">GIF</button>
+          </div>
+          <p id="fmt-note" class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
+            WebM records live · MP4/MOV/GIF encode on stop (may take a moment)
+          </p>
+        </div>
+
         <button id="btn-export-frame"
                 class="btn-hard w-full py-3 bg-acid text-ink font-bold text-sm uppercase border-2 border-acid disabled:bg-ink disabled:text-white/30 disabled:border-white/30">
           ▙ Save frame [PNG]
@@ -957,6 +992,9 @@
                 class="btn-hard w-full py-3 bg-ink text-mag font-bold text-sm uppercase border-2 border-mag disabled:text-white/30 disabled:border-white/30">
           ● Record output [WEBM]
         </button>
+        <div id="encode-progress" class="hidden text-[10px] text-acid uppercase">
+          Encoding… <span id="encode-pct">0%</span>
+        </div>
         <p class="text-[9px] text-white/40 uppercase leading-relaxed">
           Recording captures the processed canvas stream in realtime. Press again to stop &amp; download.
         </p>
@@ -1102,8 +1140,13 @@ const state = {
   /* Background keyer for transparent export. */
   bgKey: { on: false, target: 'dark', thresh: 40, feather: 10 },
 
-  recorder: null,         // MediaRecorder instance while recording
+  recorder: null,         // MediaRecorder instance while recording (webm)
   recChunks: [],
+  exportFmt: 'webm',      // 'webm' | 'mp4' | 'mov' | 'gif' (user choice)
+  activeFmt: 'webm',      // resolved format actually used this recording
+  capFrames: [],          // captured ImageBitmaps/frames for mp4/gif encode
+  capTimer: 0,            // frame-grab interval id
+  recording: false,
   seeking: false,         // true while user drags the seek bar
   rafId: 0,
 };
@@ -1115,8 +1158,10 @@ const state = {
 /** Fully tear down the current media and free memory. Called before
     every new load — this is the "properly clear memory" contract. */
 function unloadMedia() {
-  // Stop any in-flight recording first (its stream dies with the media).
-  if (state.recorder && state.recorder.state !== 'inactive') stopRecording();
+  // Stop any in-flight recording first (its stream/timer dies with media).
+  if (state.recording) stopRecording();
+  clearInterval(state.capTimer);
+  state.capFrames = [];
 
   // Video: pause, detach the src and force the element to drop buffers.
   if (state.video) {
@@ -1329,6 +1374,10 @@ const T3 = {                     // three.js runtime handles
   lastSpinT: null,
 };
 
+/* Manual orbit + zoom state (drag on the canvas to rotate, scroll to zoom).
+   Declared here so updateModel3D can compose it with the auto-spin. */
+const orbit = { dragging: false, lastX: 0, lastY: 0, yaw: 0, pitch: 0, dist: 3.4 };
+
 /** Lazy-load three.js + loaders from CDN on first model use. Each file
     tries jsDelivr first and falls back to unpkg if that fails. */
 function ensureThreeLibs() {
@@ -1419,7 +1468,10 @@ async function loadModel(file, ext) {
 
     sizePipeline(1024, 1024);
     showStage(false);
-    $('model-panel').classList.remove('hidden');
+    // Reset the manual orbit for the new model + show the grab cursor.
+    orbit.yaw = 0; orbit.pitch = 0; orbit.dist = 3.4; orbit.dragging = false;
+    display.style.cursor = 'grab';
+    $('model-hud').classList.remove('hidden');       // surface controls on the canvas
     setStatus(`SIGNAL LOCKED // 3D ${ext.toUpperCase()} · ${T3.geoms.length} MESH`);
   } catch (err) {
     console.error('Model load failed:', err);
@@ -1557,7 +1609,16 @@ function updateModel3D() {
   const now = performance.now() / 1000;
   const dt = T3.lastSpinT == null ? 0 : Math.min(0.1, now - T3.lastSpinT);
   T3.lastSpinT = now;
-  T3.group.rotation.y += state.model.spin * dt * Math.PI;
+
+  // Auto-spin accumulates into the orbit yaw so manual drag and spin compose.
+  orbit.yaw += state.model.spin * dt * Math.PI;
+  T3.group.rotation.y = orbit.yaw;
+  T3.group.rotation.x = orbit.pitch;
+
+  // Zoom: dolly the camera along its view axis.
+  T3.camera.position.set(0, 0.4, orbit.dist);
+  T3.camera.lookAt(0, 0, 0);
+
   if (state.model.mode === 'texture' && T3.fxTexture) T3.fxTexture.needsUpdate = true;
   updateTopoUniforms();                 // live contour sliders + pulse
   T3.renderer.render(T3.scene, T3.camera);
@@ -1575,7 +1636,8 @@ function disposeModel() {
   T3.geoms = [];
   if (T3.fxTexture) { T3.fxTexture.dispose(); T3.fxTexture = null; }
   state.model.loaded = false;
-  $('model-panel').classList.add('hidden');
+  $('model-hud').classList.add('hidden');
+  display.style.cursor = '';
 }
 
 /* ----- Stage / transport visibility ----- */
@@ -3155,10 +3217,61 @@ function setModelMode(mode) {
 document.querySelectorAll('.model-mode').forEach((b) =>
   b.addEventListener('click', () => setModelMode(b.dataset.mode)));
 
-$('model-spin').addEventListener('input', () => {
-  state.model.spin = parseFloat($('model-spin').value);
-  $('model-spin-val').textContent = state.model.spin.toFixed(2);
+/** Keep the HUD spin slider + readout in sync (sidebar panel removed —
+    the 3D controls now live on the canvas). Null-safe for either. */
+function setModelSpin(v) {
+  state.model.spin = v;
+  const set = (id, val) => { const el = $(id); if (el) el.value = val; };
+  const txt = (id, t) => { const el = $(id); if (el) el.textContent = t; };
+  set('model-spin', v);
+  set('model-spin-hud', v);
+  txt('model-spin-val', v.toFixed(2));
+  txt('model-spin-hud-val', v.toFixed(2));
+}
+$('model-spin-hud').addEventListener('input', () => setModelSpin(parseFloat($('model-spin-hud').value)));
+
+/* Auto-rotate toggle: unchecking parks the spin at 0 but remembers the
+   previous rate so re-checking restores it. */
+let lastSpinRate = 0.4;
+$('model-autofit').addEventListener('change', (e) => {
+  if (e.target.checked) { setModelSpin(lastSpinRate || 0.4); }
+  else { lastSpinRate = state.model.spin || 0.4; setModelSpin(0); }
 });
+
+/* Minimise the on-canvas HUD to just its title bar. */
+$('model-hud-min').addEventListener('click', () => {
+  const body = $('model-hud-body');
+  const hidden = body.classList.toggle('hidden');
+  $('model-hud-min').textContent = hidden ? '+' : '–';
+  $('model-hud-min').title = hidden ? 'Expand' : 'Minimise';
+});
+
+/* ---- Canvas orbit + zoom (drag to rotate the model, scroll to zoom) ----
+   Only active while a model is loaded. Rotating sets a manual pitch/yaw
+   that composes with the auto-spin; zoom dollies the camera. `orbit` is
+   declared up near the T3 handles. */
+
+display.addEventListener('mousedown', (e) => {
+  if (state.mediaType !== 'model') return;
+  orbit.dragging = true; orbit.lastX = e.clientX; orbit.lastY = e.clientY;
+  display.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', (e) => {
+  if (!orbit.dragging) return;
+  orbit.yaw   += (e.clientX - orbit.lastX) * 0.01;
+  orbit.pitch += (e.clientY - orbit.lastY) * 0.01;
+  orbit.pitch = clampi(orbit.pitch, -1.3, 1.3);       // avoid flipping over the poles
+  orbit.lastX = e.clientX; orbit.lastY = e.clientY;
+});
+window.addEventListener('mouseup', () => {
+  orbit.dragging = false;
+  if (state.mediaType === 'model') display.style.cursor = 'grab';
+});
+display.addEventListener('wheel', (e) => {
+  if (state.mediaType !== 'model') return;
+  e.preventDefault();
+  orbit.dist = clampi(orbit.dist + e.deltaY * 0.003, 1.2, 8);
+}, { passive: false });
 
 /* ==============================================================
    AUTO LAYERS — control wiring
@@ -3241,22 +3354,41 @@ $('sidebar').addEventListener('click', (e) => {
 });
 
 /* ---- Collapse / hide panel (effect keeps running) ----
-   Injects an eye button into each stage header. Collapsing hides the
-   stage's controls but the effect + its keyframes stay active. */
+   Every stage starts COLLAPSED. Clicking the header row expands/collapses
+   it; the effect + its keyframes stay active regardless. A chevron shows
+   state, and an enabled-but-collapsed stage shows an acid dot. */
 document.querySelectorAll('.fx-stage').forEach((section) => {
-  const cluster = section.querySelector('.flex.flex-col');   // the ▲▼ column
-  const eye = document.createElement('button');
-  eye.className = 'fx-eye text-xs';
-  eye.textContent = '◉';
-  eye.title = 'Hide controls (effect keeps running)';
-  eye.setAttribute('aria-label', 'Hide or show this stage\u2019s controls');
-  eye.addEventListener('click', () => {
-    const collapsed = section.classList.toggle('collapsed');
-    eye.textContent = collapsed ? '◌' : '◉';
-    eye.title = collapsed ? 'Show controls' : 'Hide controls (effect keeps running)';
-  });
-  cluster.parentElement.insertBefore(eye, cluster);   // place eye before ▲▼
+  const headRow = section.querySelector('.flex.items-center.gap-2');   // header line
+  const cluster = section.querySelector('.flex.flex-col');             // ▲▼ column
+  const nameSpan = section.querySelector('.h-display.text-lg.text-paper');
+  if (nameSpan) nameSpan.classList.add('fx-name');
+
+  // Chevron indicator prepended to the ▲▼ cluster area.
+  const chev = document.createElement('span');
+  chev.className = 'fx-chevron select-none';
+  chev.textContent = '▶';
+  chev.setAttribute('aria-hidden', 'true');
+  cluster.parentElement.insertBefore(chev, cluster);
+
+  // Start collapsed.
+  section.classList.add('collapsed');
+  if (headRow) headRow.classList.add('fx-headrow');
+
+  // Toggle on header click — but not when interacting with the controls
+  // that live in the header (checkbox, grip, ▲▼ buttons).
+  const toggle = (e) => {
+    if (e.target.closest('input, .fx-grip, .fx-up, .fx-down')) return;
+    section.classList.toggle('collapsed');
+  };
+  if (headRow) headRow.addEventListener('click', toggle);
 });
+
+/* Global expand / collapse all. */
+function setAllCollapsed(collapsed) {
+  document.querySelectorAll('.fx-stage').forEach((s) => s.classList.toggle('collapsed', collapsed));
+}
+$('fx-expand-all')?.addEventListener('click', () => setAllCollapsed(false));
+$('fx-collapse-all')?.addEventListener('click', () => setAllCollapsed(true));
 
 /* ---- Animation transport ---- */
 function updateAnimReadout() {
@@ -3505,10 +3637,12 @@ $('btn-reset').addEventListener('click', () => {
   state.fx.stretch  = { on: false, dir: 'down', pos: 0.5, amount: 0.6, jitter: 0.2 };
   setStretchDir('down');
   state.model.mode  = 'surface';
-  state.model.spin  = 0.4;
   setModelMode('surface');
-  $('model-spin').value = 0.4;
-  $('model-spin-val').textContent = '0.40';
+  setModelSpin(0.4);                          // syncs sidebar + HUD sliders
+  $('model-autofit').checked = true;
+  orbit.yaw = 0; orbit.pitch = 0; orbit.dist = 3.4;
+  $('model-hud-body').classList.remove('hidden');
+  $('model-hud-min').textContent = '–';
   setDepthNear('light');
   state.layers      = { on: false, count: 3, assign: ['none', 'none', 'none', 'none'] };
   setPalette('mono');
@@ -3583,12 +3717,8 @@ $('btn-reset').addEventListener('click', () => {
   display.classList.remove('alpha-bg');
   display.classList.add('bg-ink');
 
-  // Un-collapse any hidden stage panels.
-  document.querySelectorAll('.fx-stage.collapsed').forEach((s) => {
-    s.classList.remove('collapsed');
-    const eye = s.querySelector('.fx-eye');
-    if (eye) eye.textContent = '◉';
-  });
+  // Return all stage panels to the collapsed default.
+  document.querySelectorAll('.fx-stage').forEach((s) => s.classList.add('collapsed'));
 
   // Restore default export resolution.
   setExportCap('1080');
@@ -3650,71 +3780,119 @@ $('btn-export-frame').addEventListener('click', () => {
    (Video/GIF audio is not routed into the recording — the capture
    stream is the processed canvas only.) */
 $('btn-record').addEventListener('click', () => {
-  if (state.recorder && state.recorder.state !== 'inactive') { stopRecording(); return; }
+  if (state.recording) { stopRecording(); return; }
   if (!state.mediaType) { setStatus('RECORD DENIED // NO SIGNAL', true); return; }
   startRecording();
 });
 
+/* Export format selector (WebM / MP4 / GIF). */
+function setExportFmt(fmt) {
+  state.exportFmt = fmt;
+  document.querySelectorAll('.fmt-btn').forEach((b) => {
+    const on = b.dataset.fmt === fmt;
+    b.classList.toggle('bg-acid', on);
+    b.classList.toggle('text-ink', on);
+    b.classList.toggle('bg-ink', !on);
+    b.classList.toggle('text-paper', !on);
+    b.setAttribute('aria-pressed', on);
+  });
+  const notes = {
+    webm: 'WebM records live (Chromium) · falls back to MP4 on Safari · VP9 keeps alpha',
+    mp4:  'MP4 (H.264) · works in Chrome, Edge & Safari 16.4+ · no alpha',
+    mov:  'MOV (ProRes 4444) · transparent background when Transparent Out is on · Chrome/Safari',
+    gif:  'GIF encodes on stop at 15fps · 256 colours · best for short loops',
+  };
+  $('fmt-note').textContent = notes[fmt];
+  $('btn-record').textContent = state.recording ? '■ Stop & download' : `● Record output [${fmt.toUpperCase()}]`;
+}
+document.querySelectorAll('.fmt-btn').forEach((b) =>
+  b.addEventListener('click', () => setExportFmt(b.dataset.fmt)));
+
 function pickMime() {
-  // When exporting transparent, prefer VP8/VP9 which can carry an alpha
-  // channel in WebM (Chromium). MP4 (Safari) has no alpha, so a keyed
-  // export there will come out on black — PNG frames stay the reliable
-  // route for guaranteed transparency.
-  const alphaFirst = [
+  // WebM codec preference (VP9 → VP8 → generic). VP8/VP9 also carry alpha
+  // in Chromium, which matters for transparent export.
+  const candidates = [
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
-    'video/mp4',
   ];
-  const normal = [
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-    'video/mp4',
-  ];
-  const candidates = state.bgKey.on ? alphaFirst : normal;
   return candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
 }
 
-function startRecording() {
-  const mime = pickMime();
-  if (!mime) { setStatus('RECORD FAULT // MEDIARECORDER UNSUPPORTED', true); return; }
+/* Lazy-loaded encoder libs (only fetched when first used). Mediabunny
+   handles MP4 + MOV (incl. ProRes 4444 alpha) via WebCodecs and works in
+   both Chromium and Safari 16.4+. gifenc handles GIF. */
+const ENC = { mb: null, gif: null };
+async function loadEncoder(kind) {
+  if ((kind === 'mp4' || kind === 'mov') && !ENC.mb) {
+    ENC.mb = await import('https://cdn.jsdelivr.net/npm/mediabunny@1.50.6/+esm');
+  }
+  if (kind === 'gif' && !ENC.gif) {
+    ENC.gif = await import('https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm');
+  }
+}
 
-  // Bump the pipeline up to the export resolution BEFORE grabbing the
-  // stream, so the capture track locks onto the high-res dimensions.
-  // captureStream() reads the canvas size at call time, so we resize and
-  // render one frame first. Preview is restored when recording stops.
+function recFps() { return state.exportFmt === 'gif' ? 15 : 30; }   // GIF: fewer frames
+
+/** Resolve the effective format: WebM falls back to MP4 where the
+    browser's MediaRecorder can't make WebM (Safari). Transparent export
+    forces WebM→MOV so alpha survives (MP4/H.264 has no alpha). */
+function effectiveFmt() {
+  let f = state.exportFmt;
+  if (f === 'webm' && state.bgKey.on) return 'mov';   // keep alpha
+  if (f === 'webm' && !pickMime()) return 'mp4';      // Safari: no webm
+  return f;
+}
+
+function startRecording() {
+  // Bump the pipeline up to export resolution BEFORE capturing so frames
+  // grab at full res. Preview is restored on stop.
   sizePipeline(0, 0, state.exportCap);
   composite();
+  const recW = state.W, recH = state.H;
+  const fmt = effectiveFmt();
+  state.activeFmt = fmt;
 
-  const fps = 30;
-  // Scale the bitrate with the pixel count so high-res output stays crisp
-  // (~0.25 bits per pixel per frame), clamped to a sane 8–50 Mbps band.
-  const bitrate = Math.max(8_000_000, Math.min(50_000_000,
-    Math.round(state.W * state.H * fps * 0.25)));
-
-  const stream = display.captureStream(fps);
-  state.recChunks = [];
-  state.recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
-
-  const recW = state.W, recH = state.H;   // capture the dims for the readout
-  state.recorder.ondataavailable = (e) => { if (e.data.size) state.recChunks.push(e.data); };
-  state.recorder.onstop = () => {
-    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
-    const blob = new Blob(state.recChunks, { type: mime });
-    downloadBlob(blob, `signal-capture-${recW}x${recH}-${Date.now()}.${ext}`);
+  if (fmt === 'webm') {
+    // ---- Live WebM via MediaRecorder (fast path, Chromium) ----
+    const mime = pickMime();
+    const fps = recFps();
+    const bitrate = Math.max(8_000_000, Math.min(50_000_000, Math.round(recW * recH * fps * 0.25)));
+    const stream = display.captureStream(fps);
     state.recChunks = [];
-    stream.getTracks().forEach((t) => t.stop());   // free the capture track
-    sizePipeline(0, 0, state.previewCap);          // restore fast preview
-    setStatus(`CAPTURE COMMITTED // ${recW}×${recH} FILE WRITTEN`);
-  };
-
-  state.recorder.start(250);                        // gather chunks every 250 ms
-
-  if (state.bgKey.on && mime.includes('mp4')) {
-    setStatus('NOTE // MP4 HAS NO ALPHA — USE PNG FOR TRANSPARENCY', true);
+    state.recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
+    state.recorder.ondataavailable = (e) => { if (e.data.size) state.recChunks.push(e.data); };
+    state.recorder.onstop = () => {
+      const blob = new Blob(state.recChunks, { type: mime });
+      downloadBlob(blob, `signal-capture-${recW}x${recH}-${Date.now()}.webm`);
+      state.recChunks = [];
+      stream.getTracks().forEach((t) => t.stop());
+      sizePipeline(0, 0, state.previewCap);
+      setStatus(`CAPTURE COMMITTED // ${recW}×${recH} WEBM`);
+    };
+    state.recorder.start(250);
+    if (state.bgKey.on) setStatus('RECORDING // WEBM (VP9 CARRIES ALPHA)', true);
+  } else {
+    // ---- MP4 / MOV / GIF: grab frames on a timer, encode on stop ----
+    // MOV keeps alpha, so grab with an alpha-preserving context.
+    state.capFrames = [];
+    const fps = recFps();
+    const keepAlpha = fmt === 'mov';
+    const grab = () => {
+      const c = document.createElement('canvas');
+      c.width = recW; c.height = recH;
+      const g = c.getContext('2d', keepAlpha ? { alpha: true } : undefined);
+      if (!keepAlpha) { g.fillStyle = '#000'; g.fillRect(0, 0, recW, recH); }
+      g.drawImage(display, 0, 0);
+      state.capFrames.push(c);
+      if (state.capFrames.length > 900) stopRecording();   // ~30s@30 / 60s@15
+    };
+    grab();
+    state.capTimer = setInterval(grab, 1000 / fps);
+    setStatus(`RECORDING // ${fmt.toUpperCase()} FRAME CAPTURE`, true);
   }
 
+  state.recording = true;
   // If a video is loaded and paused, roll it so there's motion to record.
   if (state.mediaType === 'video' && state.video.paused) {
     state.video.play().catch(() => {});
@@ -3725,16 +3903,139 @@ function startRecording() {
   $('rec-indicator').classList.add('flex');
   $('btn-record').textContent = '■ Stop & download';
   $('btn-record').classList.add('bg-mag', 'text-ink');
-  setStatus(`RECORDING // ${recW}×${recH} STREAM LIVE`, true);
+  if (fmt !== 'webm') setStatus(`RECORDING // ${recW}×${recH} ${fmt.toUpperCase()}`, true);
 }
 
-function stopRecording() {
-  if (state.recorder && state.recorder.state !== 'inactive') state.recorder.stop();
-  state.recorder = null;
+async function stopRecording() {
+  if (!state.recording) return;
+  state.recording = false;
   $('rec-indicator').classList.add('hidden');
   $('rec-indicator').classList.remove('flex');
-  $('btn-record').textContent = '● Record output [WEBM]';
+  $('btn-record').textContent = '● Record output';
   $('btn-record').classList.remove('bg-mag', 'text-ink');
+
+  if (state.activeFmt === 'webm') {
+    if (state.recorder && state.recorder.state !== 'inactive') state.recorder.stop();
+    state.recorder = null;
+    return;                                    // download handled in onstop
+  }
+
+  // Stop grabbing and encode the captured frames.
+  clearInterval(state.capTimer);
+  const frames = state.capFrames;
+  state.capFrames = [];
+  if (!frames.length) { sizePipeline(0, 0, state.previewCap); return; }
+
+  const fmt = state.activeFmt;
+  try {
+    if (fmt === 'mp4' || fmt === 'mov') await encodeMuxed(frames, recFps(), fmt);
+    else                                await encodeGIF(frames, recFps());
+  } catch (err) {
+    console.error(`${fmt} encode failed:`, err);
+    setStatus(`ENCODE FAULT // ${fmt.toUpperCase()} (SEE CONSOLE) — TRY WEBM`, true);
+  }
+  sizePipeline(0, 0, state.previewCap);        // restore fast preview
+}
+
+/* ---- MP4 / MOV encoder (mediabunny + WebCodecs) ----
+   MP4 uses H.264 (universal, no alpha). MOV uses ProRes 4444, which
+   carries an alpha channel for transparent export, encoded via
+   WebCodecs' alpha:'keep'. Works in Chromium and Safari 16.4+. */
+async function encodeMuxed(frames, fps, fmt) {
+  if (!('VideoEncoder' in window)) {
+    setStatus(`${fmt.toUpperCase()} NEEDS WEBCODECS (CHROME/EDGE/SAFARI 16.4+)`, true);
+    return;
+  }
+  await loadEncoder(fmt);
+  const {
+    Output, BufferTarget, Mp4OutputFormat, MovOutputFormat, CanvasSource,
+    canEncodeVideo, QUALITY_HIGH,
+  } = ENC.mb;
+
+  const W = frames[0].width, H = frames[0].height;
+  const wantAlpha = fmt === 'mov' && state.bgKey.on;
+  showEncodeProgress(0);
+
+  // Pick codec: ProRes for MOV (alpha-capable), H.264 for MP4. If the
+  // browser can't encode the first choice, fall back gracefully.
+  let codec = fmt === 'mov' ? 'prores' : 'avc';
+  if (!(await canEncodeVideo(codec).catch(() => false))) {
+    // MOV without ProRes support → try H.264 in a MOV container (no alpha).
+    codec = 'avc';
+    if (wantAlpha) setStatus('NOTE // PRORES UNAVAILABLE — MOV WILL LACK ALPHA', true);
+  }
+
+  const format = fmt === 'mov' ? new MovOutputFormat() : new Mp4OutputFormat();
+  const target = new BufferTarget();
+  const output = new Output({ format, target });
+
+  // A canvas we redraw each frame; CanvasSource encodes its current state.
+  const enc = document.createElement('canvas');
+  enc.width = W; enc.height = H;
+  const ectx = enc.getContext('2d');
+
+  const source = new CanvasSource(enc, {
+    codec,
+    bitrate: QUALITY_HIGH,
+    // Ask WebCodecs to keep alpha when we need a transparent MOV.
+    onEncoderConfig: (cfg) => { if (wantAlpha) cfg.alpha = 'keep'; },
+  });
+  output.addVideoTrack(source, { frameRate: fps });
+  await output.start();
+
+  const dt = 1 / fps;
+  for (let i = 0; i < frames.length; i++) {
+    ectx.clearRect(0, 0, W, H);
+    ectx.drawImage(frames[i], 0, 0);
+    await source.add(i * dt, dt);              // awaits encoder backpressure
+    if (i % 5 === 0) { showEncodeProgress(i / frames.length * 0.95); }
+  }
+  await output.finalize();
+  showEncodeProgress(1);
+
+  const mime = fmt === 'mov' ? 'video/quicktime' : 'video/mp4';
+  const blob = new Blob([target.buffer], { type: mime });
+  downloadBlob(blob, `signal-capture-${W}x${H}-${Date.now()}.${fmt}`);
+  hideEncodeProgress();
+  setStatus(`CAPTURE COMMITTED // ${W}×${H} ${fmt.toUpperCase()}${wantAlpha ? ' + ALPHA' : ''}`);
+}
+
+/* ---- GIF encoder (gifenc, quantized per-frame) ---- */
+async function encodeGIF(frames, fps) {
+  await loadEncoder('gif');
+  const { GIFEncoder, quantize, applyPalette } = ENC.gif;
+  const W = frames[0].width, H = frames[0].height;
+  showEncodeProgress(0);
+
+  const gif = GIFEncoder();
+  const delay = Math.round(1000 / fps);
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true });
+
+  for (let i = 0; i < frames.length; i++) {
+    tctx.drawImage(frames[i], 0, 0);
+    const data = tctx.getImageData(0, 0, W, H).data;
+    // Build a 256-colour palette from this frame and index it.
+    const palette = quantize(data, 256);
+    const index = applyPalette(data, palette);
+    gif.writeFrame(index, W, H, { palette, delay });
+    if (i % 3 === 0) { showEncodeProgress(i / frames.length); await new Promise(r => setTimeout(r)); }
+  }
+  gif.finish();
+  showEncodeProgress(1);
+  const blob = new Blob([gif.bytes()], { type: 'image/gif' });
+  downloadBlob(blob, `signal-capture-${W}x${H}-${Date.now()}.gif`);
+  hideEncodeProgress();
+  setStatus(`CAPTURE COMMITTED // ${W}×${H} GIF`);
+}
+
+function showEncodeProgress(f) {
+  $('encode-progress').classList.remove('hidden');
+  $('encode-pct').textContent = `${Math.round(f * 100)}%`;
+}
+function hideEncodeProgress() {
+  setTimeout(() => $('encode-progress').classList.add('hidden'), 800);
 }
 
 function downloadBlob(blob, filename) {
@@ -3760,6 +4061,7 @@ updateAnimReadout(); // 0.0 / 5.0s
 buildPresetButtons();// palette preset grid
 setPalette('mono');  // seed default palette + swatches
 setExportCap('1080');// default export resolution
+setExportFmt('webm');// default video format
 buildLayerSelects(); // auto-layer effect routing rows
 setDepthNear('light');// depth near-pole default
 setModelMode('surface'); // model render-mode default
