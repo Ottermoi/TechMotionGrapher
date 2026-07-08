@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>SIGNAL//PROCESSOR — Acid Graphic Media FX</title>
 
 <!-- ============================================================
@@ -222,18 +222,106 @@
 
   /* ---------- Keyframe timeline ---------- */
   .kf-track {
-    position: relative; height: 20px; background: #0c0c0c;
-    border: 1px solid #333; cursor: crosshair;
+    position: relative; height: 26px; background: #0c0c0c;
+    border: 1px solid #333; cursor: crosshair; touch-action: none;
   }
   .kf-track-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #333; }
   .kf-diamond {
-    position: absolute; top: 50%; width: 10px; height: 10px;
+    position: absolute; top: 50%; width: 14px; height: 14px;
     background: #CCFF00; border: 1px solid #000;
     transform: translate(-50%, -50%) rotate(45deg);
-    cursor: pointer; padding: 0;
+    cursor: grab; padding: 0; touch-action: none;
+  }
+  .kf-diamond:active, .kf-diamond.dragging { cursor: grabbing; }
+  /* Larger invisible hit area for touch (44px min) without changing look */
+  .kf-diamond::before {
+    content: ""; position: absolute; inset: -12px;
   }
   .kf-diamond.sel { background: #FF00A8; box-shadow: 0 0 0 2px #FF00A8; z-index: 2; }
+  .kf-diamond.dragging { z-index: 3; box-shadow: 0 0 0 2px #CCFF00; }
   .kf-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #FF00A8; pointer-events: none; }
+
+  /* Timeline dock collapse */
+  #timeline-dock.collapsed #tl-body { display: none; }
+
+  /* Safe-area padding for notched phones */
+  @supports (padding: max(0px)) {
+    #mobile-nav { padding-bottom: max(0px, env(safe-area-inset-bottom)); }
+  }
+
+  /* ==========================================================
+     MOBILE LAYOUT (≤768px): sidebar becomes a bottom drawer,
+     a bottom tab bar switches between Canvas / FX / Timeline.
+     ========================================================== */
+  #mobile-nav { display: none; }
+
+  @media (max-width: 768px) {
+    /* Stack the main split vertically; sidebar slides up as a sheet. */
+    #main-split { flex-direction: column; }
+
+    #sidebar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      width: 100% !important; height: 72vh;
+      transform: translateY(100%);
+      transition: transform 0.22s ease;
+      z-index: 40; border-left: none; border-top: 2px solid #fff;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    body.panel-fx #sidebar { transform: translateY(0); }
+
+    /* Timeline dock also becomes a bottom sheet on its own tab. */
+    #timeline-dock {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      transform: translateY(100%);
+      transition: transform 0.22s ease;
+      z-index: 40; max-height: 72vh; overflow-y: auto;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    body.panel-timeline #timeline-dock { transform: translateY(0); }
+    #timeline-dock #tl-body { max-height: 52vh; }
+
+    /* Give the canvas room above the bottom nav. */
+    #workspace { padding-bottom: 56px; }
+    .workspace-grid { min-height: 0; }
+
+    /* Header shrinks. */
+    header h1 { font-size: 1.25rem; }
+    #hdr-media { display: none; }
+
+    /* Bottom tab bar. */
+    #mobile-nav {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0;
+      height: 56px; z-index: 50; background: #000;
+      border-top: 2px solid #fff;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    #mobile-nav button {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 2px; color: rgba(255,255,255,0.6);
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+      border-right: 1px solid #333; background: none;
+      min-height: 44px; touch-action: manipulation;
+    }
+    #mobile-nav button:last-child { border-right: none; }
+    #mobile-nav button.active { color: #CCFF00; background: rgba(204,255,0,0.08); }
+    #mobile-nav svg { width: 20px; height: 20px; }
+
+    /* Scrim behind open sheets. */
+    #sheet-scrim {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      z-index: 35; display: none;
+    }
+    body.panel-fx #sheet-scrim, body.panel-timeline #sheet-scrim { display: block; }
+
+    /* Bigger tap targets on mobile controls. */
+    input[type="range"] { height: 30px; }
+    .btn-hard { min-height: 40px; }
+    #mobile-nav .btn-hard { min-height: 44px; }
+  }
+
+  @media (max-width: 768px) and (orientation: landscape) {
+    #sidebar, #timeline-dock { height: 88vh; max-height: 88vh; }
+  }
 </style>
 </head>
 
@@ -267,7 +355,7 @@
   </header>
 
   <!-- ================= MAIN SPLIT ================= -->
-  <div class="flex-1 flex min-h-0">
+  <div id="main-split" class="flex-1 flex min-h-0">
 
     <!-- ---------- WORKSPACE (canvas + transport) ---------- -->
     <main id="workspace" class="flex-1 flex flex-col min-w-0 workspace-grid relative">
@@ -340,6 +428,38 @@
           </div>
           <div id="timecode" class="px-4 text-xs text-acid border-l-2 border-paper h-12 flex items-center whitespace-nowrap">
             00:00.0 / 00:00.0
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= DOCKED KEYFRAME TIMELINE =================
+           Lives under the media window at all sizes. Collapsible so it
+           doesn't eat canvas space when unused. -->
+      <div id="timeline-dock" class="flex-none border-t-2 border-paper panel !border-x-0 !border-b-0">
+        <!-- Header / transport row -->
+        <div class="flex items-center gap-2 px-3 py-2 border-b-2 border-paper flex-wrap">
+          <button id="tl-toggle" class="btn-hard text-acid" aria-label="Collapse or expand timeline" aria-expanded="true">
+            <span class="h-display text-base text-paper">TIMELINE <span class="text-acid">◆</span></span>
+          </button>
+          <button id="anim-play" class="btn-hard w-11 h-9 border-2 border-paper text-acid font-bold" aria-label="Play or pause animation">❚❚</button>
+          <input type="range" id="anim-scrub" min="0" max="1000" value="0" step="1" class="flex-1 min-w-[120px]" aria-label="Scrub animation" />
+          <div class="text-[10px] text-white/60 uppercase whitespace-nowrap" id="anim-time">0.0 / 5.0s</div>
+          <div class="flex items-center gap-1">
+            <label for="anim-dur" class="text-[10px] uppercase text-white/50 hidden sm:inline">Loop</label>
+            <input type="number" id="anim-dur" min="0.5" max="60" step="0.5" value="5"
+                   class="w-14 bg-ink border-2 border-paper text-acid text-xs px-1 py-1 text-center" aria-label="Loop length in seconds" />
+            <span class="text-[10px] text-white/50">s</span>
+          </div>
+          <button id="kf-del" class="btn-hard hidden text-[10px] uppercase bg-mag text-ink font-bold px-2 py-1.5">Delete key</button>
+          <button id="kf-clear" class="btn-hard text-[10px] uppercase text-mag border border-mag px-2 py-1.5">Clear</button>
+        </div>
+        <!-- Track area (collapsible body) -->
+        <div id="tl-body" class="px-3 py-2 overflow-y-auto" style="max-height: 26vh;">
+          <p class="text-[9px] text-white/40 uppercase mb-2">
+            Press <span class="text-acid">◆</span> beside any slider to key it · drag a diamond to move it in time
+          </p>
+          <div id="kf-tracks" class="space-y-2">
+            <p class="text-[9px] text-white/30 uppercase">No keyframes · pipeline is static</p>
           </div>
         </div>
       </div>
@@ -640,6 +760,23 @@
                 <span class="ml-auto text-[9px] text-white/40">off = cycle evenly</span>
               </label>
             </div>
+            <div class="border-t-2 border-white/20 pt-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] text-white/50 uppercase">Shape colours</span>
+                <div class="flex gap-1">
+                  <button id="shapes-col-add" class="btn-hard text-[11px] text-acid border border-acid px-1.5 leading-none" title="Add colour" aria-label="Add shape colour">+</button>
+                  <button id="shapes-col-remove" class="btn-hard text-[11px] text-mag border border-mag px-1.5 leading-none" title="Remove last colour" aria-label="Remove last shape colour">−</button>
+                </div>
+              </div>
+              <div id="shapes-colors" class="flex gap-1 flex-wrap"></div>
+              <div class="flex gap-1 mt-2">
+                <button class="shapes-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="red">Red</button>
+                <button class="shapes-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="acid">Acid</button>
+                <button class="shapes-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="cyan">Cyan</button>
+                <button class="shapes-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="mono">Mono</button>
+              </div>
+              <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">Shapes pick from these colours</p>
+            </div>
           </div>
         </section>
 
@@ -760,6 +897,156 @@
               </div>
               <input type="range" id="contour-depth" min="0" max="1" step="0.05" value="0.5" />
               <p class="text-[9px] text-white/40 uppercase mt-0.5">How much lines thicken + drift at the pulse peak</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- MODULATION (carrier-wave signal distortion) -->
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="modulate">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Modulation to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-modulate" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">12</span>
+              <span class="h-display text-lg text-paper truncate">MODULATE</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Modulation up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Modulation down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Carrier-wave signal distortion · displaces + amplitude-modulates like a broadcast feed
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Waveform</div>
+              <div class="grid grid-cols-4 gap-0 border-2 border-paper text-[10px] font-bold uppercase">
+                <button class="mod-wave btn-hard py-1.5 bg-acid text-ink border-r-2 border-paper" data-wave="sine">Sine</button>
+                <button class="mod-wave btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-wave="square">Sqr</button>
+                <button class="mod-wave btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-wave="saw">Saw</button>
+                <button class="mod-wave btn-hard py-1.5 bg-ink text-paper" data-wave="noise">Noise</button>
+              </div>
+            </div>
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Axis</div>
+              <div class="grid grid-cols-2 gap-0 border-2 border-paper text-[11px] font-bold uppercase">
+                <button class="mod-axis btn-hard py-1.5 bg-acid text-ink border-r-2 border-paper" data-axis="h">Horizontal</button>
+                <button class="mod-axis btn-hard py-1.5 bg-ink text-paper" data-axis="v">Vertical</button>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="mod-freq">Frequency</label><span id="mod-freq-val" class="text-acid">12</span>
+              </div>
+              <input type="range" id="mod-freq" min="1" max="80" step="1" value="12" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="mod-amp">Displace amp</label><span id="mod-amp-val" class="text-acid">10 px</span>
+              </div>
+              <input type="range" id="mod-amp" min="0" max="60" step="1" value="10" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="mod-depth">AM depth</label><span id="mod-depth-val" class="text-acid">0.40</span>
+              </div>
+              <input type="range" id="mod-depth" min="0" max="1" step="0.05" value="0.4" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="mod-speed">Scroll speed</label><span id="mod-speed-val" class="text-mag">0.50</span>
+              </div>
+              <input type="range" id="mod-speed" min="0" max="4" step="0.05" value="0.5" />
+            </div>
+            <div class="border-t-2 border-white/20 pt-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] text-white/50 uppercase">Signal tint</span>
+                <div class="flex gap-1">
+                  <button id="mod-col-add" class="btn-hard text-[11px] text-acid border border-acid px-1.5 leading-none" title="Add colour" aria-label="Add tint colour">+</button>
+                  <button id="mod-col-remove" class="btn-hard text-[11px] text-mag border border-mag px-1.5 leading-none" title="Remove colour" aria-label="Remove tint colour">−</button>
+                </div>
+              </div>
+              <div id="mod-colors" class="flex gap-1 flex-wrap"></div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60 mt-2">
+                <label for="mod-tint">Tint mix</label><span id="mod-tint-val" class="text-acid">0.30</span>
+              </div>
+              <input type="range" id="mod-tint" min="0" max="1" step="0.05" value="0.3" />
+              <p class="text-[9px] text-white/40 uppercase mt-1">Wave crests take these colours by amplitude</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- OSCILLOSCOPE (waveform traces) -->
+        <section class="fx-stage collapsed p-4 border-b-2 border-paper" data-fx="scope">
+          <div class="flex items-center gap-2">
+            <button class="fx-grip cursor-grab select-none text-white/40 hover:text-acid px-0.5" title="Drag to reorder" aria-label="Drag Oscilloscope to reorder">⣿</button>
+            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input type="checkbox" id="fx-scope" class="fx-toggle" />
+              <span class="stage-num h-display text-lg text-acid w-7">13</span>
+              <span class="h-display text-lg text-paper truncate">SCOPE</span>
+            </label>
+            <div class="flex flex-col leading-none">
+              <button class="fx-up btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Oscilloscope up">▲</button>
+              <button class="fx-down btn-hard text-[9px] text-white/50 hover:text-acid px-1" aria-label="Move Oscilloscope down">▼</button>
+            </div>
+          </div>
+          <p class="text-[9px] text-white/40 uppercase mt-2 leading-relaxed fx-collapsible">
+            Reads the image as waveform traces on a phosphor scope · luma or per-channel
+          </p>
+          <div class="mt-3 space-y-3 fx-collapsible">
+            <div>
+              <div class="text-[10px] text-white/50 uppercase mb-1">Trace source</div>
+              <div class="grid grid-cols-3 gap-0 border-2 border-paper text-[10px] font-bold uppercase">
+                <button class="scope-src btn-hard py-1.5 bg-acid text-ink border-r-2 border-paper" data-src="luma">Luma</button>
+                <button class="scope-src btn-hard py-1.5 bg-ink text-paper border-r-2 border-paper" data-src="rgb">RGB</button>
+                <button class="scope-src btn-hard py-1.5 bg-ink text-paper" data-src="xy">XY</button>
+              </div>
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer text-[10px] uppercase text-white/70">
+              <input type="checkbox" id="scope-hide" class="fx-toggle" />
+              Hide image — traces only
+            </label>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="scope-rows">Trace rows</label><span id="scope-rows-val" class="text-acid">6</span>
+              </div>
+              <input type="range" id="scope-rows" min="1" max="24" step="1" value="6" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="scope-gain">Gain</label><span id="scope-gain-val" class="text-acid">1.0</span>
+              </div>
+              <input type="range" id="scope-gain" min="0.1" max="4" step="0.1" value="1" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="scope-grid">Grid</label><span id="scope-grid-val" class="text-acid">0.25</span>
+              </div>
+              <input type="range" id="scope-grid" min="0" max="1" step="0.05" value="0.25" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] uppercase text-white/60">
+                <label for="scope-glow">Glow</label><span id="scope-glow-val" class="text-acid">0.50</span>
+              </div>
+              <input type="range" id="scope-glow" min="0" max="1" step="0.05" value="0.5" />
+            </div>
+            <div class="border-t-2 border-white/20 pt-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] text-white/50 uppercase">Trace + grid colours</span>
+                <div class="flex gap-1">
+                  <button id="scope-col-add" class="btn-hard text-[11px] text-acid border border-acid px-1.5 leading-none" title="Add colour" aria-label="Add trace colour">+</button>
+                  <button id="scope-col-remove" class="btn-hard text-[11px] text-mag border border-mag px-1.5 leading-none" title="Remove colour" aria-label="Remove trace colour">−</button>
+                </div>
+              </div>
+              <div id="scope-colors" class="flex gap-1 flex-wrap"></div>
+              <div class="flex gap-1 mt-2">
+                <button class="scope-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="green">Green</button>
+                <button class="scope-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="amber">Amber</button>
+                <button class="scope-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="acid">Acid</button>
+                <button class="scope-preset btn-hard text-[9px] uppercase px-2 py-1 border border-paper text-paper" data-preset="rgb">RGB</button>
+              </div>
+              <p class="text-[9px] text-white/40 uppercase mt-1">1st colour = grid · rest cycle across traces</p>
             </div>
           </div>
         </section>
@@ -888,36 +1175,6 @@
 
       </div><!-- /#fx-list -->
 
-      <!-- ================= KEYFRAME TIMELINE ================= -->
-      <section class="p-4 border-b-2 border-paper">
-        <div class="flex items-center justify-between">
-          <h3 class="h-display text-lg text-paper">TIMELINE <span class="text-acid">◆</span></h3>
-          <div class="text-[10px] text-white/50 uppercase" id="anim-time">0.0 / 5.0s</div>
-        </div>
-        <p class="text-[9px] text-white/40 uppercase mt-1 leading-relaxed">
-          Press <span class="text-acid">◆</span> beside any slider to key it at the playhead
-        </p>
-
-        <div class="flex items-center gap-2 mt-3">
-          <button id="anim-play" class="btn-hard w-10 h-8 border-2 border-paper text-acid font-bold" aria-label="Play or pause animation">❚❚</button>
-          <input type="range" id="anim-scrub" min="0" max="1000" value="0" step="1" class="flex-1" aria-label="Scrub animation" />
-        </div>
-
-        <div class="flex items-center gap-2 mt-3">
-          <label for="anim-dur" class="text-[10px] uppercase text-white/60">Loop length</label>
-          <input type="number" id="anim-dur" min="0.5" max="60" step="0.5" value="5"
-                 class="w-16 bg-ink border-2 border-paper text-acid text-xs px-2 py-1 text-center" />
-          <span class="text-[10px] text-white/50">sec</span>
-          <button id="kf-clear" class="btn-hard ml-auto text-[10px] uppercase text-mag border border-mag px-2 py-1">Clear keys</button>
-        </div>
-
-        <!-- Dynamically populated keyframe tracks -->
-        <div id="kf-tracks" class="mt-3 space-y-2">
-          <p id="kf-empty" class="text-[9px] text-white/30 uppercase">No keyframes · pipeline is static</p>
-        </div>
-        <button id="kf-del" class="btn-hard hidden w-full mt-2 py-1.5 text-[10px] uppercase bg-mag text-ink font-bold">Delete selected key</button>
-      </section>
-
       <!-- ================= OUTPUT / TRANSPARENCY ================= -->
       <section class="p-4 border-b-2 border-paper">
         <label class="flex items-center gap-3 cursor-pointer">
@@ -1011,14 +1268,37 @@
     </aside>
   </div>
 
+  <!-- Scrim behind mobile bottom sheets -->
+  <div id="sheet-scrim" aria-hidden="true"></div>
+
   <!-- ================= STATUS FOOTER ================= -->
-  <footer class="flex-none border-t-2 border-paper bg-ink flex text-[10px] uppercase">
-    <div class="px-4 py-1.5 border-r border-white/30 text-acid" id="status-line">STANDBY // AWAITING INPUT</div>
-    <div class="px-4 py-1.5 border-r border-white/30 text-white/50" id="status-res">RES —</div>
-    <div class="px-4 py-1.5 border-r border-white/30 text-white/50" id="status-fx">FX 0/11</div>
-    <div class="px-4 py-1.5 text-acid" id="status-order">ORD D·H·A·A·N</div>
-    <div class="ml-auto px-4 py-1.5 text-mag">DO NOT FEED UNTRUSTED DATA</div>
+  <footer class="flex-none border-t-2 border-paper bg-ink flex text-[10px] uppercase overflow-hidden">
+    <div class="px-4 py-1.5 border-r border-white/30 text-acid whitespace-nowrap" id="status-line">STANDBY // AWAITING INPUT</div>
+    <div class="px-4 py-1.5 border-r border-white/30 text-white/50 whitespace-nowrap hidden sm:block" id="status-res">RES —</div>
+    <div class="px-4 py-1.5 border-r border-white/30 text-white/50 whitespace-nowrap hidden sm:block" id="status-fx">FX 0/13</div>
+    <div class="px-4 py-1.5 text-acid whitespace-nowrap hidden md:block" id="status-order">ORD D·H·A·A·N</div>
+    <div class="ml-auto px-4 py-1.5 text-mag whitespace-nowrap hidden lg:block">DO NOT FEED UNTRUSTED DATA</div>
   </footer>
+
+  <!-- ================= MOBILE BOTTOM NAV (phones only) ================= -->
+  <nav id="mobile-nav" aria-label="Panels">
+    <button data-panel="canvas" class="active" aria-label="Canvas view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 15l5-4 4 3 3-2 6 5"/></svg>
+      Canvas
+    </button>
+    <button data-panel="fx" aria-label="Effects panel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2" fill="currentColor"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2" fill="currentColor"/></svg>
+      FX
+    </button>
+    <button data-panel="timeline" aria-label="Timeline panel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"/><rect x="7" y="9" width="6" height="6" transform="rotate(45 10 12)"/></svg>
+      Timeline
+    </button>
+    <button data-panel="upload" aria-label="Upload media">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 16V6M8 10l4-4 4 4"/><path d="M4 18h16"/></svg>
+      Feed
+    </button>
+  </nav>
 </div>
 
 <script>
@@ -1101,7 +1381,7 @@ const state = {
   /* Processing order — an ordered list of effect keys. The render loop
      walks THIS array, so the user's DOM reordering directly controls
      which stage feeds which. Kept in sync with #fx-list DOM order. */
-  order: ['dither', 'halftone', 'ascii', 'aberr', 'noise', 'blocks', 'shapes', 'depth', 'contour', 'crt', 'stretch', 'layers'],
+  order: ['dither', 'halftone', 'ascii', 'aberr', 'noise', 'blocks', 'shapes', 'depth', 'contour', 'modulate', 'scope', 'crt', 'stretch', 'layers'],
 
   fx: {
     dither:   { on: false, scale: 1 },
@@ -1110,12 +1390,17 @@ const state = {
     aberr:    { on: false, offset: 4, glitch: 0 },
     noise:    { on: false, block: 10, speed: 0.35, density: 0.7, thresh: 90, target: 'dark' },
     blocks:   { on: false, size: 12, chaos: 0.4 },
-    shapes:   { on: false, density: 0.35, size: 28, thresh: 30, kinds: ['rect', 'circle', 'cross'], random: true },
+    shapes:   { on: false, density: 0.35, size: 28, thresh: 30, kinds: ['rect', 'circle', 'cross'], random: true,
+                colors: [{ r: 255, g: 32, b: 64 }, { r: 255, g: 32, b: 64 }, { r: 255, g: 0, b: 168 }, { r: 255, g: 255, b: 255 }] },
     depth:    { on: false, bias: 0.35, smooth: 2, near: 'light' },
     contour:  { on: false, rings: 16, weight: 1.4, fill: 0.15, pulse: 0.6, depth: 0.5, hide: false,
                 colors: [{ r: 40, g: 90, b: 255 }, { r: 90, g: 160, b: 255 }, { r: 200, g: 230, b: 255 }] },
     crt:      { on: false, scan: 0.35, mask: 0.3, curve: 0.2, flicker: 0.15 },
     stretch:  { on: false, dir: 'down', pos: 0.5, amount: 0.6, jitter: 0.2 },
+    modulate: { on: false, wave: 'sine', axis: 'h', freq: 12, amp: 10, depth: 0.4, speed: 0.5, tint: 0.3,
+                colors: [{ r: 204, g: 255, b: 0 }, { r: 255, g: 0, b: 168 }] },
+    scope:    { on: false, src: 'luma', hide: false, rows: 6, gain: 1, grid: 0.25, glow: 0.5,
+                colors: [{ r: 40, g: 90, b: 40 }, { r: 90, g: 255, b: 120 }] },
   },
 
   /* 3D model source (three.js renders into an offscreen canvas that the
@@ -2046,8 +2331,6 @@ function applyBlocks(srcCtx, dstCtx, W, H, opts, palette, layerMode = false) {
 }
 
 /* 07 — SHAPES: contour wireframes (red-reference look). */
-const SHAPE_COLORS = ['#FF2040', '#FF2040', '#FF00A8', '#FFFFFF'];  // red-weighted
-
 /** Scatters stroked rectangles, circles and crosses along detected
     outlines. Edges come from a coarse luminance-gradient grid (alpha-
     weighted, so layer silhouettes count as edges too). Placement is
@@ -2093,7 +2376,9 @@ function applyShapes(srcCtx, dstCtx, W, H, opts, layerMode = false) {
       const cy = ry * cell + (cell >> 1);
       const v = hash3(rx * 13 + 5, ry * 7 + 11, tStep);
       const s = 4 + v * size;                      // this shape's size
-      dstCtx.strokeStyle = SHAPE_COLORS[(v * SHAPE_COLORS.length) | 0];
+      const cols = (opts.colors && opts.colors.length) ? opts.colors : [{ r: 255, g: 32, b: 64 }];
+      const sc = cols[(v * cols.length) | 0];
+      dstCtx.strokeStyle = `rgb(${sc.r},${sc.g},${sc.b})`;
 
       // Pick which kind to draw: random (hash-driven) or an even cycle
       // through the selected set.
@@ -2449,6 +2734,165 @@ function applyStretch(srcCtx, dstCtx, W, H, opts, layerMode = false) {
   dstCtx.putImageData(out, 0, 0);
 }
 
+/* 12 — MODULATION: carrier-wave signal distortion. A travelling carrier
+   wave (sine/square/saw/noise) displaces each scanline (or column) and
+   amplitude-modulates its brightness, like a analog broadcast feed drifting
+   off-tune. Wave crests are tinted from the colour list by amplitude. */
+function modWave(kind, phase) {
+  // returns -1..1 for a given phase in turns
+  const t = phase - Math.floor(phase);
+  switch (kind) {
+    case 'square': return t < 0.5 ? 1 : -1;
+    case 'saw':    return t * 2 - 1;
+    case 'noise':  return hash3((phase * 1000) | 0, 7, 0) * 2 - 1;
+    default:       return Math.sin(phase * Math.PI * 2);   // sine
+  }
+}
+function applyModulate(srcCtx, dstCtx, W, H, opts, layerMode = false) {
+  const { wave, axis, freq, amp, depth, speed, tint } = opts;
+  const cols = (opts.colors && opts.colors.length) ? opts.colors : [{ r: 204, g: 255, b: 0 }];
+  const src = srcCtx.getImageData(0, 0, W, H).data;
+  const out = dstCtx.createImageData(W, H);
+  const o = out.data;
+  const now = performance.now() / 1000;
+  const scroll = now * speed;
+  const horiz = axis === 'h';
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      // Carrier phase runs along the modulation axis.
+      const along = horiz ? y : x;
+      const phase = (along / (horiz ? H : W)) * freq + scroll;
+      const wv = modWave(wave, phase);              // -1..1
+
+      // Displace perpendicular to the axis by the wave.
+      let sx = x, sy = y;
+      if (horiz) sx = clampi(Math.round(x + wv * amp), 0, W - 1);
+      else       sy = clampi(Math.round(y + wv * amp), 0, H - 1);
+
+      const si = (sy * W + sx) * 4;
+      const di = (y * W + x) * 4;
+      // Amplitude modulation of brightness.
+      const g = 1 + depth * wv;
+      let r = src[si] * g, gg = src[si + 1] * g, b = src[si + 2] * g;
+
+      // Tint crests: positive wave takes colour by amplitude.
+      if (tint > 0 && wv > 0) {
+        const tc = cols[Math.min(cols.length - 1, (wv * cols.length) | 0)];
+        const m = tint * wv;
+        r = r * (1 - m) + tc.r * m;
+        gg = gg * (1 - m) + tc.g * m;
+        b = b * (1 - m) + tc.b * m;
+      }
+      o[di]     = clampi(r, 0, 255);
+      o[di + 1] = clampi(gg, 0, 255);
+      o[di + 2] = clampi(b, 0, 255);
+      o[di + 3] = layerMode ? src[si + 3] : 255;
+    }
+  }
+  dstCtx.putImageData(out, 0, 0);
+}
+
+/* 13 — OSCILLOSCOPE: reads the image as waveform traces on a phosphor
+   scope. Each trace row plots a signal (luma, per-channel RGB, or an XY
+   Lissajous of luma-vs-column) as a glowing line over an optional grid.
+   Colours: first entry = grid, the rest cycle across the traces. */
+function applyScope(srcCtx, dstCtx, W, H, opts, layerMode = false) {
+  const { src: mode, hide, rows, gain, grid, glow } = opts;
+  const cols = (opts.colors && opts.colors.length) ? opts.colors : [{ r: 40, g: 90, b: 40 }, { r: 90, g: 255, b: 120 }];
+  const gridCol = cols[0];
+  const traceCols = cols.length > 1 ? cols.slice(1) : cols;
+  const data = srcCtx.getImageData(0, 0, W, H).data;
+
+  // Base layer: dim the image or clear to black when hidden.
+  if (hide || layerMode) {
+    dstCtx.clearRect(0, 0, W, H);
+    if (!layerMode) { dstCtx.fillStyle = '#000'; dstCtx.fillRect(0, 0, W, H); }
+  } else {
+    dstCtx.drawImage(srcCtx.canvas, 0, 0);
+    dstCtx.fillStyle = 'rgba(0,0,0,0.55)';          // darken so traces pop
+    dstCtx.fillRect(0, 0, W, H);
+  }
+
+  // Grid.
+  if (grid > 0) {
+    dstCtx.strokeStyle = `rgba(${gridCol.r},${gridCol.g},${gridCol.b},${grid})`;
+    dstCtx.lineWidth = 1;
+    const step = Math.max(16, (W / 16) | 0);
+    dstCtx.beginPath();
+    for (let x = 0; x <= W; x += step) { dstCtx.moveTo(x, 0); dstCtx.lineTo(x, H); }
+    for (let y = 0; y <= H; y += step) { dstCtx.moveTo(0, y); dstCtx.lineTo(W, y); }
+    dstCtx.stroke();
+  }
+
+  const lumAt = (x, y) => {
+    const i = (clampi(y, 0, H - 1) * W + clampi(x, 0, W - 1)) * 4;
+    return (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+  };
+  const chAt = (x, y, c) => data[(clampi(y, 0, H - 1) * W + clampi(x, 0, W - 1)) * 4 + c] / 255;
+
+  dstCtx.lineWidth = glow > 0.5 ? 2 : 1.4;
+  dstCtx.lineJoin = 'round';
+
+  if (mode === 'xy') {
+    // XY / Lissajous: plot luma of a sampled row as radius vs column.
+    const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.42;
+    const tc = traceCols[0];
+    drawGlow(dstCtx, tc, glow, () => {
+      dstCtx.beginPath();
+      const N = 360;
+      for (let k = 0; k <= N; k++) {
+        const a = (k / N) * Math.PI * 2;
+        const sx = (cx + Math.cos(a) * R * 0.9) | 0;
+        const sy = (cy + Math.sin(a) * R * 0.9) | 0;
+        const rr = R * (0.35 + 0.65 * lumAt(sx, sy) * gain);
+        const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr;
+        k === 0 ? dstCtx.moveTo(px, py) : dstCtx.lineTo(px, py);
+      }
+      dstCtx.stroke();
+    });
+    return;
+  }
+
+  const nRows = Math.max(1, rows | 0);
+  const rowH = H / nRows;
+  const channels = mode === 'rgb' ? [0, 1, 2] : [-1];   // -1 = luma
+
+  for (let r = 0; r < nRows; r++) {
+    const baseY = (r + 0.5) * rowH;
+    const sampleY = Math.round((r + 0.5) * rowH);
+    channels.forEach((ch, ci) => {
+      const tc = (mode === 'rgb')
+        ? [{ r: 255, g: 60, b: 60 }, { r: 60, g: 255, b: 90 }, { r: 80, g: 140, b: 255 }][ch]
+        : traceCols[r % traceCols.length];
+      drawGlow(dstCtx, tc, glow, () => {
+        dstCtx.beginPath();
+        for (let x = 0; x < W; x++) {
+          const val = ch < 0 ? lumAt(x, sampleY) : chAt(x, sampleY, ch);
+          const y = baseY - (val - 0.5) * rowH * 0.95 * gain;
+          x === 0 ? dstCtx.moveTo(x, y) : dstCtx.lineTo(x, y);
+        }
+        dstCtx.stroke();
+      });
+    });
+  }
+}
+
+/** Draw a stroke path twice — a soft wide glow then a bright core. */
+function drawGlow(ctx, col, glow, pathFn) {
+  const cc = `rgb(${col.r},${col.g},${col.b})`;
+  if (glow > 0) {
+    ctx.save();
+    ctx.shadowColor = cc;
+    ctx.shadowBlur = 4 + glow * 12;
+    ctx.strokeStyle = cc;
+    pathFn();
+    ctx.restore();
+  }
+  ctx.strokeStyle = cc;
+  pathFn();
+}
+
 /** Background key → alpha. Sets alpha to 0 for "background" pixels so
     the exported PNG/WebM carries transparency. `target` picks which
     luminance pole is background; `feather` softens the alpha edge. */
@@ -2537,6 +2981,20 @@ function runEffect(name, cur, other, W, H, pal, fx) {
       }
       return cur;
 
+    case 'modulate':
+      if (fx.modulate.on) {
+        applyModulate(cur, other, W, H, fx.modulate);
+        return other;
+      }
+      return cur;
+
+    case 'scope':
+      if (fx.scope.on) {
+        applyScope(cur, other, W, H, fx.scope);
+        return other;
+      }
+      return cur;
+
     case 'crt':
       if (fx.crt.on) {
         applyCRT(cur, other, W, H, fx.crt);
@@ -2600,6 +3058,8 @@ function runLayerEffect(name, cur, other, W, H, band) {
     case 'shapes':   applyShapes(cur, other, W, H, fx.shapes, true); return other;
     case 'depth':    applyDepth(cur, other, W, H, fx.depth, pal, true); return other;
     case 'contour':  applyContour(cur, other, W, H, fx.contour, pal, true); return other;
+    case 'modulate': applyModulate(cur, other, W, H, fx.modulate, true); return other;
+    case 'scope':    applyScope(cur, other, W, H, fx.scope, true); return other;
     case 'crt':      applyCRT(cur, other, W, H, fx.crt, true); return other;
     case 'stretch':  applyStretch(cur, other, W, H, fx.stretch, true); return other;
   }
@@ -2941,6 +3401,8 @@ bindToggle('fx-depth', 'depth');
 bindToggle('fx-contour', 'contour');
 bindToggle('fx-crt', 'crt');
 bindToggle('fx-stretch', 'stretch');
+bindToggle('fx-modulate', 'modulate');
+bindToggle('fx-scope', 'scope');
 
 /* ==============================================================
    ANIMATABLE PARAMETERS + KEYFRAME ENGINE
@@ -2978,6 +3440,15 @@ const PARAM_DEFS = [
   { key: 'stretch.pos',      fx: 'stretch',  prop: 'pos',      slider: 'stretch-pos',      val: 'stretch-pos-val',      label: 'Stretch pos',     fmt: (v) => `${Math.round(v * 100)}%` },
   { key: 'stretch.amount',   fx: 'stretch',  prop: 'amount',   slider: 'stretch-amount',   val: 'stretch-amount-val',   label: 'Stretch amount',  fmt: (v) => v.toFixed(2) },
   { key: 'stretch.jitter',   fx: 'stretch',  prop: 'jitter',   slider: 'stretch-jitter',   val: 'stretch-jitter-val',   label: 'Stretch jitter',  fmt: (v) => v.toFixed(2) },
+  { key: 'modulate.freq',    fx: 'modulate', prop: 'freq',     slider: 'mod-freq',         val: 'mod-freq-val',         label: 'Mod frequency',   fmt: (v) => `${Math.round(v)}` },
+  { key: 'modulate.amp',     fx: 'modulate', prop: 'amp',      slider: 'mod-amp',          val: 'mod-amp-val',          label: 'Mod amp',         fmt: (v) => `${Math.round(v)} px` },
+  { key: 'modulate.depth',   fx: 'modulate', prop: 'depth',    slider: 'mod-depth',        val: 'mod-depth-val',        label: 'Mod AM depth',    fmt: (v) => v.toFixed(2) },
+  { key: 'modulate.speed',   fx: 'modulate', prop: 'speed',    slider: 'mod-speed',        val: 'mod-speed-val',        label: 'Mod scroll',      fmt: (v) => v.toFixed(2) },
+  { key: 'modulate.tint',    fx: 'modulate', prop: 'tint',     slider: 'mod-tint',         val: 'mod-tint-val',         label: 'Mod tint',        fmt: (v) => v.toFixed(2) },
+  { key: 'scope.rows',       fx: 'scope',    prop: 'rows',     slider: 'scope-rows',       val: 'scope-rows-val',       label: 'Scope rows',      fmt: (v) => `${Math.round(v)}` },
+  { key: 'scope.gain',       fx: 'scope',    prop: 'gain',     slider: 'scope-gain',       val: 'scope-gain-val',       label: 'Scope gain',      fmt: (v) => v.toFixed(1) },
+  { key: 'scope.grid',       fx: 'scope',    prop: 'grid',     slider: 'scope-grid',       val: 'scope-grid-val',       label: 'Scope grid',      fmt: (v) => v.toFixed(2) },
+  { key: 'scope.glow',       fx: 'scope',    prop: 'glow',     slider: 'scope-glow',       val: 'scope-glow-val',       label: 'Scope glow',      fmt: (v) => v.toFixed(2) },
 ];
 const DEF_BY_KEY = Object.fromEntries(PARAM_DEFS.map((d) => [d.key, d]));
 
@@ -3117,6 +3588,17 @@ $('shapes-random').addEventListener('change', (e) => {
   state.fx.shapes.random = e.target.checked;
 });
 
+const SHAPES_PRESETS = {
+  red:  ['#FF2040', '#FF2040', '#FF00A8', '#FFFFFF'],
+  acid: ['#CCFF00', '#00FF6A', '#FFFFFF'],
+  cyan: ['#00E5FF', '#2F6BFF', '#FFFFFF'],
+  mono: ['#FFFFFF', '#AAAAAA'],
+};
+const renderShapesColors = makeColorEditor('shapes-colors',
+  () => state.fx.shapes.colors,
+  { min: 1, max: 8, addId: 'shapes-col-add', removeId: 'shapes-col-remove',
+    presetClass: 'shapes-preset', presets: SHAPES_PRESETS });
+
 /* Depth near-pole switch: which end of the palette means "near". */
 function setDepthNear(t) {
   state.fx.depth.near = t;
@@ -3133,6 +3615,42 @@ $('depth-dark').addEventListener('click', () => setDepthNear('dark'));
    CONTOUR — ring colour editor
    ============================================================== */
 
+/* Reusable colour-list editor. Renders <input type=color> swatches into
+   `hostId` bound to the array returned by getArr(), with optional add/
+   remove + preset buttons. Used by Contour, Shapes, Modulation, Scope. */
+function makeColorEditor(hostId, getArr, opts = {}) {
+  const { min = 1, max = 8, addId, removeId, presetClass, presets, onChange } = opts;
+  const host = $(hostId);
+  function render() {
+    host.innerHTML = '';
+    getArr().forEach((c, i) => {
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = rgbToHex(c);
+      input.title = `Colour ${i + 1}`;
+      input.setAttribute('aria-label', `${hostId} colour ${i + 1}`);
+      input.style.cssText = 'width:30px;height:26px;border:2px solid #fff;background:#000;padding:0;cursor:pointer';
+      input.addEventListener('input', () => { getArr()[i] = hexToRgb(input.value); onChange && onChange(); });
+      host.appendChild(input);
+    });
+  }
+  if (addId) $(addId).addEventListener('click', () => {
+    const a = getArr(); if (a.length >= max) return;
+    a.push({ r: 255, g: 255, b: 255 }); render(); onChange && onChange();
+  });
+  if (removeId) $(removeId).addEventListener('click', () => {
+    const a = getArr(); if (a.length <= min) return;
+    a.pop(); render(); onChange && onChange();
+  });
+  if (presetClass && presets) document.querySelectorAll('.' + presetClass).forEach((b) =>
+    b.addEventListener('click', () => {
+      const arr = getArr(); arr.length = 0;
+      presets[b.dataset.preset].forEach((h) => arr.push(hexToRgb(h)));
+      render(); onChange && onChange();
+    }));
+  return render;
+}
+
 const CONTOUR_PRESETS = {
   blue:    ['#285AFF', '#5AA0FF', '#C8E6FF'],
   red:     ['#FF2838', '#FF3C64', '#FF9BB0'],
@@ -3141,35 +3659,10 @@ const CONTOUR_PRESETS = {
 };
 
 /** Render one <input type="color"> per contour ring colour. */
-function renderContourColors() {
-  const host = $('contour-colors');
-  host.innerHTML = '';
-  state.fx.contour.colors.forEach((c, i) => {
-    const input = document.createElement('input');
-    input.type = 'color';
-    input.value = rgbToHex(c);
-    input.title = `Ring colour ${i + 1}`;
-    input.setAttribute('aria-label', `Contour ring colour ${i + 1}`);
-    input.style.cssText = 'width:30px;height:26px;border:2px solid #fff;background:#000;padding:0;cursor:pointer';
-    input.addEventListener('input', () => { state.fx.contour.colors[i] = hexToRgb(input.value); });
-    host.appendChild(input);
-  });
-}
-$('contour-col-add').addEventListener('click', () => {
-  if (state.fx.contour.colors.length >= 8) return;
-  state.fx.contour.colors.push({ r: 255, g: 255, b: 255 });
-  renderContourColors();
-});
-$('contour-col-remove').addEventListener('click', () => {
-  if (state.fx.contour.colors.length <= 1) return;
-  state.fx.contour.colors.pop();
-  renderContourColors();
-});
-document.querySelectorAll('.contour-preset').forEach((b) =>
-  b.addEventListener('click', () => {
-    state.fx.contour.colors = CONTOUR_PRESETS[b.dataset.preset].map(hexToRgb);
-    renderContourColors();
-  }));
+const renderContourColors = makeColorEditor('contour-colors',
+  () => state.fx.contour.colors,
+  { min: 1, max: 8, addId: 'contour-col-add', removeId: 'contour-col-remove',
+    presetClass: 'contour-preset', presets: CONTOUR_PRESETS });
 
 /* Toggling CONTOUR on a loaded model swaps the mesh material between the
    normal shaded look and the slice shader, so hook the checkbox. */
@@ -3197,6 +3690,41 @@ function setStretchDir(dir) {
 }
 document.querySelectorAll('.stretch-dir').forEach((b) =>
   b.addEventListener('click', () => setStretchDir(b.dataset.dir)));
+
+/* ---- MODULATION selectors + tint colours ---- */
+function setBtnGroup(cls, dataKey, val, apply) {
+  document.querySelectorAll('.' + cls).forEach((b) => {
+    const on = b.dataset[dataKey] === val;
+    b.classList.toggle('bg-acid', on);
+    b.classList.toggle('text-ink', on);
+    b.classList.toggle('bg-ink', !on);
+    b.classList.toggle('text-paper', !on);
+    b.setAttribute('aria-pressed', on);
+  });
+  apply(val);
+}
+function setModWave(v) { setBtnGroup('mod-wave', 'wave', v, (x) => state.fx.modulate.wave = x); }
+function setModAxis(v) { setBtnGroup('mod-axis', 'axis', v, (x) => state.fx.modulate.axis = x); }
+document.querySelectorAll('.mod-wave').forEach((b) => b.addEventListener('click', () => setModWave(b.dataset.wave)));
+document.querySelectorAll('.mod-axis').forEach((b) => b.addEventListener('click', () => setModAxis(b.dataset.axis)));
+const renderModColors = makeColorEditor('mod-colors',
+  () => state.fx.modulate.colors,
+  { min: 1, max: 6, addId: 'mod-col-add', removeId: 'mod-col-remove' });
+
+/* ---- OSCILLOSCOPE selectors + trace colours ---- */
+function setScopeSrc(v) { setBtnGroup('scope-src', 'src', v, (x) => state.fx.scope.src = x); }
+document.querySelectorAll('.scope-src').forEach((b) => b.addEventListener('click', () => setScopeSrc(b.dataset.src)));
+$('scope-hide').addEventListener('change', (e) => { state.fx.scope.hide = e.target.checked; });
+const SCOPE_PRESETS = {
+  green: ['#0F3D14', '#5AFF78'],
+  amber: ['#3D2A00', '#FFB000', '#FFE7A0'],
+  acid:  ['#1A2600', '#CCFF00', '#FFFFFF'],
+  rgb:   ['#222222', '#FF3C3C', '#3CFF5A', '#508CFF'],
+};
+const renderScopeColors = makeColorEditor('scope-colors',
+  () => state.fx.scope.colors,
+  { min: 1, max: 8, addId: 'scope-col-add', removeId: 'scope-col-remove',
+    presetClass: 'scope-preset', presets: SCOPE_PRESETS });
 
 /* ==============================================================
    3D MODEL — panel wiring
@@ -3281,7 +3809,7 @@ const LAYER_FX_OPTIONS = [
   ['none', '— none —'], ['dither', 'Dither'], ['halftone', 'Halftone'],
   ['ascii', 'ASCII'], ['aberr', 'RGB Split'], ['noise', 'Noise Mask'],
   ['blocks', 'Blocks'], ['shapes', 'Shapes'], ['depth', 'Depth Map'], ['contour', 'Contour'],
-  ['crt', 'CRT'], ['stretch', 'Stretch'],
+  ['crt', 'CRT'], ['stretch', 'Stretch'], ['modulate', 'Modulate'], ['scope', 'Oscilloscope'],
 ];
 
 /** (Re)build one effect <select> per layer band, dark → light. */
@@ -3463,8 +3991,49 @@ function renderTimeline() {
       dot.style.left = `${(kf.t / state.anim.duration) * 100}%`;
       dot.title = `${d.label} = ${d.fmt(kf.v)} @ ${kf.t.toFixed(1)}s`;
       if (state.selKey && state.selKey.param === param && state.selKey.index === i) dot.classList.add('sel');
+
+      // --- Drag-to-reposition in time (pointer events = mouse + touch) ---
+      let dragging = false, moved = false;
+      dot.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dragging = true; moved = false;
+        dot.classList.add('dragging');
+        dot.setPointerCapture(e.pointerId);
+        // Select this key on grab.
+        state.selKey = { param, index: i };
+        $('kf-del').classList.remove('hidden');
+      });
+      dot.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const box = lane.getBoundingClientRect();
+        const f = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
+        const newT = f * state.anim.duration;
+        if (Math.abs(newT - kf.t) > 0.001) moved = true;
+        kf.t = newT;
+        dot.style.left = `${f * 100}%`;
+        dot.title = `${d.label} = ${d.fmt(kf.v)} @ ${kf.t.toFixed(1)}s`;
+      });
+      const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        dot.classList.remove('dragging');
+        try { dot.releasePointerCapture(e.pointerId); } catch (_) {}
+        // Re-sort the track by time so interpolation stays ordered, then
+        // track the moved key's new index for continued selection.
+        const movedKf = track[i];
+        track.sort((a, b) => a.t - b.t);
+        const ni = track.indexOf(movedKf);
+        state.selKey = { param, index: ni };
+        renderTimeline();      // rebuild with sorted order + updated indices
+      };
+      dot.addEventListener('pointerup', endDrag);
+      dot.addEventListener('pointercancel', endDrag);
+
+      // Plain click (no drag) just selects.
       dot.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (moved) return;     // was a drag, selection already handled
         state.selKey = { param, index: i };
         $('kf-del').classList.remove('hidden');
         renderTimeline();
@@ -3635,7 +4204,14 @@ $('btn-reset').addEventListener('click', () => {
   if (state.model.loaded) buildModelGroup(state.model.mode);   // drop slice shader
   state.fx.crt      = { on: false, scan: 0.35, mask: 0.3, curve: 0.2, flicker: 0.15 };
   state.fx.stretch  = { on: false, dir: 'down', pos: 0.5, amount: 0.6, jitter: 0.2 };
+  state.fx.modulate = { on: false, wave: 'sine', axis: 'h', freq: 12, amp: 10, depth: 0.4, speed: 0.5, tint: 0.3,
+                        colors: [{ r: 204, g: 255, b: 0 }, { r: 255, g: 0, b: 168 }] };
+  state.fx.scope    = { on: false, src: 'luma', hide: false, rows: 6, gain: 1, grid: 0.25, glow: 0.5,
+                        colors: [{ r: 40, g: 90, b: 40 }, { r: 90, g: 255, b: 120 }] };
   setStretchDir('down');
+  setModWave('sine'); setModAxis('h'); setScopeSrc('luma');
+  $('scope-hide').checked = false;
+  renderModColors(); renderScopeColors(); renderShapesColors();
   state.model.mode  = 'surface';
   setModelMode('surface');
   setModelSpin(0.4);                          // syncs sidebar + HUD sliders
@@ -3650,7 +4226,7 @@ $('btn-reset').addEventListener('click', () => {
 
   // Sync every control back to defaults.
   const setVal = (id, v, labelId, txt) => { $(id).value = v; if (labelId) $(labelId).textContent = txt; };
-  ['fx-dither', 'fx-halftone', 'fx-ascii', 'fx-aberr', 'fx-noise', 'fx-blocks', 'fx-shapes', 'fx-depth', 'fx-contour', 'fx-crt', 'fx-stretch'].forEach((id) => { $(id).checked = false; });
+  ['fx-dither', 'fx-halftone', 'fx-ascii', 'fx-aberr', 'fx-noise', 'fx-blocks', 'fx-shapes', 'fx-depth', 'fx-contour', 'fx-crt', 'fx-stretch', 'fx-modulate', 'fx-scope'].forEach((id) => { $(id).checked = false; });
   setVal('dither-scale', 1, 'dither-scale-val', '1 px');
   setVal('halftone-scale', 8, 'halftone-scale-val', '8 px');
   setVal('halftone-contrast', 1.4, 'halftone-contrast-val', '1.4×');
@@ -3680,6 +4256,15 @@ $('btn-reset').addEventListener('click', () => {
   setVal('stretch-pos', 0.5, 'stretch-pos-val', '50%');
   setVal('stretch-amount', 0.6, 'stretch-amount-val', '0.60');
   setVal('stretch-jitter', 0.2, 'stretch-jitter-val', '0.20');
+  setVal('mod-freq', 12, 'mod-freq-val', '12');
+  setVal('mod-amp', 10, 'mod-amp-val', '10 px');
+  setVal('mod-depth', 0.4, 'mod-depth-val', '0.40');
+  setVal('mod-speed', 0.5, 'mod-speed-val', '0.50');
+  setVal('mod-tint', 0.3, 'mod-tint-val', '0.30');
+  setVal('scope-rows', 6, 'scope-rows-val', '6');
+  setVal('scope-gain', 1, 'scope-gain-val', '1.0');
+  setVal('scope-grid', 0.25, 'scope-grid-val', '0.25');
+  setVal('scope-glow', 0.5, 'scope-glow-val', '0.50');
   // Restore default shape set (boxes/circles/crosses) + randomize on.
   document.querySelectorAll('.shape-kind').forEach((c) => {
     c.checked = ['rect', 'circle', 'cross'].includes(c.dataset.kind);
@@ -3693,7 +4278,7 @@ $('btn-reset').addEventListener('click', () => {
   buildLayerSelects();
 
   // Restore the factory pipeline order by re-sorting the DOM stages.
-  const DEFAULT_ORDER = ['dither', 'halftone', 'ascii', 'aberr', 'noise', 'blocks', 'shapes', 'depth', 'contour', 'crt', 'stretch', 'layers'];
+  const DEFAULT_ORDER = ['dither', 'halftone', 'ascii', 'aberr', 'noise', 'blocks', 'shapes', 'depth', 'contour', 'modulate', 'scope', 'crt', 'stretch', 'layers'];
   DEFAULT_ORDER.forEach((fxKey) => {
     const sec = fxList.querySelector(`.fx-stage[data-fx="${fxKey}"]`);
     if (sec) fxList.appendChild(sec);   // append in canonical order
@@ -4066,7 +4651,51 @@ buildLayerSelects(); // auto-layer effect routing rows
 setDepthNear('light');// depth near-pole default
 setModelMode('surface'); // model render-mode default
 renderContourColors(); // contour ring colour swatches
+renderShapesColors();  // shape colour swatches
+renderModColors();     // modulation tint swatches
+renderScopeColors();   // oscilloscope trace swatches
+setModWave('sine'); setModAxis('h'); setScopeSrc('luma');
 setStretchDir('down'); // stretch default direction
+
+/* ==============================================================
+   MOBILE NAV + TIMELINE DOCK
+   ============================================================== */
+
+/* Timeline dock collapse (all screen sizes). */
+$('tl-toggle').addEventListener('click', () => {
+  const dock = $('timeline-dock');
+  const collapsed = dock.classList.toggle('collapsed');
+  $('tl-toggle').setAttribute('aria-expanded', String(!collapsed));
+});
+
+/* Bottom tab bar: switch between canvas / FX sheet / timeline sheet.
+   'upload' triggers the file picker; 'canvas' closes any open sheet. */
+function setMobilePanel(panel) {
+  document.body.classList.remove('panel-fx', 'panel-timeline');
+  if (panel === 'fx') document.body.classList.add('panel-fx');
+  else if (panel === 'timeline') document.body.classList.add('panel-timeline');
+  document.querySelectorAll('#mobile-nav button').forEach((b) => {
+    // 'upload' doesn't stay active; keep the last view highlighted.
+    if (b.dataset.panel === 'upload') return;
+    const on = b.dataset.panel === panel;
+    b.classList.toggle('active', on);
+  });
+}
+document.querySelectorAll('#mobile-nav button').forEach((b) =>
+  b.addEventListener('click', () => {
+    const panel = b.dataset.panel;
+    if (panel === 'upload') { $('file-input').click(); return; }
+    // If timeline is collapsed, expand it when opening its sheet.
+    if (panel === 'timeline') {
+      $('timeline-dock').classList.remove('collapsed');
+      $('tl-toggle').setAttribute('aria-expanded', 'true');
+    }
+    setMobilePanel(panel);
+  }));
+
+/* Tapping the scrim closes any open bottom sheet. */
+$('sheet-scrim').addEventListener('click', () => setMobilePanel('canvas'));
+
 renderFrame();      // the loop idles cheaply until a source arrives
 </script>
 </body>
